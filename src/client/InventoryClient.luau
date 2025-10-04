@@ -646,6 +646,7 @@ function InventoryClient.UpdateDisplay()
 						-- in the effort to not trigger any overflow items. Checks to adjust the movecount will be made in advance, and not in the Move function, (it's a warning for a reason, because it should not happen)
 						local moveCount = 0
 						local dragSlotInfo = GetTargetSlotInfo(prevDraggingSlot)
+						local dragCount = InventoryClient.DraggingCount
 						local maxStackCount = nil
 
 						if slotInfo == nil then -- we can move all of the dragged items into the empty slot, but we might as well double check to see if the drag count we have isn't somehow more than the max stackCount of the item type
@@ -654,22 +655,22 @@ function InventoryClient.UpdateDisplay()
 								else InventoryUtil.MaxStackData[ItemConfigData[dragSlotInfo.Item].ItemType]
 							assert(maxStackCount ~= nil and maxStackCount ~= 0)
 
-							if maxStackCount < InventoryClient.DraggingCount then
+							if maxStackCount < dragCount then
 								warn("the dragging count shouldn't be larger than the max stack count")
 								moveCount = maxStackCount
 							else
-								moveCount = InventoryClient.DraggingCount
+								moveCount = dragCount
 							end
 						elseif typeof(dragSlotInfo.Item) == "string" and dragSlotInfo.Item == slotInfo.Item then -- basically, if the dragged item is a generic item and is of the same Id as the slotItem
 							maxStackCount = InventoryUtil.MaxStackData[ItemConfigData[slotInfo.Item].ItemType]
 
-							moveCount = math.min(maxStackCount - slotInfo.Count, InventoryClient.DraggingCount)
+							moveCount = math.min(maxStackCount - slotInfo.Count, dragCount)
 						end
 
 						InventoryClient.Move(prevDraggingSlot, currentGridPos, moveCount)
 
-						-- if we end up moving all the items, we might as well just select the slot we moved the items into
-						if GetTargetSlotInfo(prevDraggingSlot) == nil then
+						-- if we end up moving all the items we were dragging, we might as well just select the slot we moved the items into
+						if moveCount == dragCount then
 							InventoryClient.SelectGridSlot(currentGridPos)
 						end
 
