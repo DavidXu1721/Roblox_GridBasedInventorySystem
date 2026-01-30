@@ -7,6 +7,7 @@ export type StackData =
 	}
 	| {
 		Item: UniqueItemData,
+		Count: nil,
 	}
 
 export type Armor = {
@@ -16,44 +17,45 @@ export type Armor = {
 }
 
 export type Inventory = {
-	Grid: { [number]: { [number]: StackData } },
+	Grid: { [number]: { [number]: StackData? } },
 	Armor: Armor,
 }
 
-export type GridPosition = {
-	x: number,
-	y: number,
-
-	__eq: (a: GridPosition, b: GridPosition) -> boolean,
-	__tostring: (self: GridPosition) -> string,
-}
+export type GridPosition = typeof(setmetatable({} :: { x: number, y: number }, {} :: any))
 
 export type InventoryUpdateInfo =
 	{
 		Type: "Move",
-		startPos: GridPosition,
-		endPos: GridPosition,
-		moveCount: number,
+		Data: {
+			startPos: GridPosition,
+			endPos: GridPosition,
+			moveCount: number,
+		},
 	}
 	| {
 		Type: "Swap",
-		APos: GridPosition,
-		BPos: GridPosition,
+		Data: {
+			APos: GridPosition,
+			BPos: GridPosition,
+		},
 	}
 	| {
 		Type: "Add",
-		itemsToAdd: StackData,
-		targetGridPos: GridPosition?,
+		Data: {
+			itemsToAdd: StackData,
+			targetGridPos: GridPosition?,
+		},
 	}
 	| {
 		Type: "Remove",
-		itemsToRemove: StackData,
-		targetGridPos: GridPosition?,
+		Data: {
+			itemsToRemove: StackData,
+			targetGridPos: GridPosition?,
+		},
 	}
 
-export type InventoryVersionData = {
-	VersionNumber: number,
-	InventoryData: Inventory,
+export type InventoryVersionHistoryData = {
+	VersionNumber: number?,
 	LastUpdate: InventoryUpdateInfo,
 }
 

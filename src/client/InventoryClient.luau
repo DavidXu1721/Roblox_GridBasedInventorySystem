@@ -61,7 +61,7 @@ InstructionTxtBox.Visible = false
 
 local GridScrollingFrame = InventoryFrame:WaitForChild("GridScrollingFrame")
 local InventoryGrid = GridScrollingFrame:WaitForChild("Grid"):WaitForChild("GridContents")
-local ItemSample = InventoryGrid:WaitForChild("Sample")
+local ItemSample: TextButton = InventoryGrid:WaitForChild("Sample")
 ItemSample.Visible = false -- this is a template so that we can easily make new inventory icons
 
 local ArmorFrame = InventoryFrame:WaitForChild("Armor")
@@ -84,7 +84,7 @@ function ProcessInventoryData(invData) -- the fact that i even have to do this i
 	end
 end
 
-function GetTargetSlotFrame(slotPos: Types.GridPosition): TextButton
+function GetTargetSlotFrame(slotPos: Types.GridPosition): TextButton?
 	if not getmetatable(slotPos) then
 		error("slotPos needs to be a gridPosition")
 	end
@@ -92,12 +92,16 @@ function GetTargetSlotFrame(slotPos: Types.GridPosition): TextButton
 	return InventoryGrid:FindFirstChild("Slot" .. tostring(slotPos))
 end
 
-function GetTargetSlotInfo(slotPos: Types.GridPosition | { x: number, y: number }): Types.StackData?
+function GetTargetSlotInfo(slotPos: Types.GridPosition | { x: number, y: number }?): Types.StackData?
 	-- I am thinking of doing a check to see if the slotPos is actually in bounds, but probably not necessary
-	return InventoryClient.InvData.Grid[slotPos.y][slotPos.x]
+	if slotPos == nil then
+		return nil
+	else
+		return InventoryClient.InvData.Grid[slotPos.y][slotPos.x]
+	end
 end
 
-function UpdateItemImage(targetImage: ImageLabel, item: string | Types.UniqueItemData, count: number?)
+function UpdateItemImage(targetImage: ImageLabel, item: string | Types.UniqueItemData?, count: number?)
 	if not item then
 		targetImage.Visible = false
 		return
@@ -105,21 +109,23 @@ function UpdateItemImage(targetImage: ImageLabel, item: string | Types.UniqueIte
 
 	targetImage.Visible = true
 
+	local countLabel = targetImage:WaitForChild("Count") :: TextLabel
+
 	-- check if the item is a generic or a unique item
 	if typeof(item) == "string" then
-		targetImage.Image = ItemConfigData[item].IconId
-		targetImage:WaitForChild("Count").Text = "x" .. count
-		targetImage:WaitForChild("Count").Visible = true
+		targetImage.Image = ItemConfigData[item].IconId or "" -- TODO: add placeholder item image for then there is no icon
+		countLabel.Text = `x{count or 0}`
+		countLabel.Visible = true
 	elseif typeof(item) == "table" then
-		targetImage.Image = ItemConfigData[item.Id].IconId
-		targetImage:WaitForChild("Count").Visible = false
+		targetImage.Image = ItemConfigData[item.Id].IconId or ""
+		countLabel.Visible = false
 	end
 end
 
 function UpdateSlotUI(gridPos: Types.GridPosition, slotInfo: Types.StackData?): TextButton
 	local slotName = "Slot" .. tostring(gridPos)
 
-	local itemSlot: TextButton = InventoryGrid:FindFirstChild(slotName)
+	local itemSlot = InventoryGrid:FindFirstChild(slotName)
 
 	if not itemSlot then
 		itemSlot = ItemSample:Clone()
@@ -128,6 +134,8 @@ function UpdateSlotUI(gridPos: Types.GridPosition, slotInfo: Types.StackData?): 
 		itemSlot.Parent = InventoryGrid
 		-- print("created ".. slotName)
 	end
+
+	itemSlot = itemSlot :: TextButton
 
 	local slotImage: ImageLabel = itemSlot.Image
 
@@ -141,7 +149,9 @@ function UpdateSlotUI(gridPos: Types.GridPosition, slotInfo: Types.StackData?): 
 		UpdateItemImage(slotImage, nil)
 
 		if hotbarSlot then
-			UpdateItemImage(hotbarSlot:WaitForChild("Image"), nil)
+			local hotbarSlotImage = hotbarSlot:WaitForChild("Image") :: ImageLabel
+
+			UpdateItemImage(hotbarSlotImage, nil)
 		end
 
 		if InventoryClient.DraggingSlot == gridPos then -- we are currently dragging this slot, you shouldn't be able to
@@ -182,7 +192,7 @@ function UpdateSlotUI(gridPos: Types.GridPosition, slotInfo: Types.StackData?): 
 		end
 
 		if hotbarSlot then
-			UpdateItemImage(hotbarSlot:WaitForChild("Image"), slotInfo.Item, stackCount)
+			UpdateItemImage(hotbarSlot:WaitForChild("Image") :: ImageLabel, slotInfo.Item, stackCount)
 		end
 	end
 
@@ -289,16 +299,16 @@ function InventoryClient.SelectGridSlot(gridPos: Types.GridPosition?)
 	for i, otherGridSlot: TextButton in InventoryGrid:GetChildren() do
 		if otherGridSlot.ClassName == "TextButton" and otherGridSlot ~= ItemSample then
 			if otherGridSlot == selectedGridSlot then
-				otherGridSlot.BackgroundColor3 = otherGridSlot:GetAttribute("SelectedColor")
+				otherGridSlot.BackgroundColor3 = otherGridSlot:GetAttribute("SelectedColor") :: Color3
 			else
-				otherGridSlot.BackgroundColor3 = otherGridSlot:GetAttribute("NormalColor")
+				otherGridSlot.BackgroundColor3 = otherGridSlot:GetAttribute("NormalColor") :: Color3
 			end
 		end
 	end
 
 	--Updating information
 	if selectedGridSlot ~= nil then
-		local slotInfo: Types.StackData = GetTargetSlotInfo(gridPos)
+		local slotInfo: Types.StackData? = GetTargetSlotInfo(gridPos)
 
 		if not slotInfo then
 			error("ERROR: Slot " .. tostring(gridPos) .. " doesn't have an item in it") -- as far as i can see, this should never happen
@@ -371,11 +381,15 @@ function InventoryClient.SelectGridSlot(gridPos: Types.GridPosition?)
 end
 
 -- Dragging item images
-function InventoryClient.StartDraggingSlot(targetSlotPos: Types.GridPosition, dragCount: number?)
-	local TargetSlotFrame: TextButton = GetTargetSlotFrame(targetSlotPos)
-	local DraggingImage: ImageLabel = TargetSlotFrame:FindFirstChild("Image")
+function InventoryClient.StartDraggingSlot(targetSlotPos: Types.GridPosition?, dragCount: number?)
+	if not targetSlotPos then
+		error("Error: targetSlotPos must be present!")
+	end
 
-	local SlotInfo: Types.StackData = GetTargetSlotInfo(targetSlotPos)
+	local TargetSlotFrame = GetTargetSlotFrame(targetSlotPos) :: TextButton
+	local DraggingImage = TargetSlotFrame:FindFirstChild("Image") :: ImageLabel?
+
+	local SlotInfo = GetTargetSlotInfo(targetSlotPos) :: Types.StackData?
 
 	if not SlotInfo then
 		error("ERROR: Slot " .. tostring(targetSlotPos) .. " doesn't have an item in it")
@@ -397,7 +411,7 @@ function InventoryClient.StartDraggingSlot(targetSlotPos: Types.GridPosition, dr
 	CAS:BindAction("AdjustDraggingCount", function(actionName, inputState, inputObject)
 		if GridScrollingFrame.ScrollingEnabled then
 			return Enum.ContextActionResult.Pass
-		end -- basically, even if the cursor is outisdeof the inventory you still can't increment dragging count
+		end -- basically, even if the cursor is outisde of the inventory you still can't increment dragging count
 
 		print("adfj,he")
 		if inputState == Enum.UserInputState.Change then
@@ -511,11 +525,11 @@ function InventoryClient.StartDraggingSlot(targetSlotPos: Types.GridPosition, dr
 	UpdateItemImage(TargetSlotFrame.Image, nil)
 end
 
-function InventoryClient.StopDraggingSlot(ignoreNilDraggingSlot: boolean)
+function InventoryClient.StopDraggingSlot(ignoreNilDraggingSlot: boolean?)
 	print("asdsasdadsaasdsdadsa")
 	if InventoryClient.DraggingSlot then
-		local DraggingSlotFrame: TextButton = GetTargetSlotFrame(InventoryClient.DraggingSlot)
-		local DraggingSlotInfo: Types.StackData = GetTargetSlotInfo(InventoryClient.DraggingSlot)
+		local DraggingSlotFrame: TextButton? = GetTargetSlotFrame(InventoryClient.DraggingSlot)
+		local DraggingSlotInfo: Types.StackData? = GetTargetSlotInfo(InventoryClient.DraggingSlot)
 
 		if not DraggingSlotFrame then
 			error("Error: SlotFrame for Slot" .. tostring(InventoryClient.DraggingSlot) .. " does not exist")
@@ -525,13 +539,18 @@ function InventoryClient.StopDraggingSlot(ignoreNilDraggingSlot: boolean)
 		UpdateItemImage(DraggingOverlay.DragImage, nil)
 
 		-- if we did update the inventory by moving an item around then the image should be remedied anyway, but in the cases where we dragged the image to nothing (aka, the border, and thus not triggering any move/swap event), we have to make that slot's image visible again
+
 		if not DraggingSlotInfo then
 			if not ignoreNilDraggingSlot then
 				warn("You shouldn't have been dragging an empty slot")
 			end
-			UpdateItemImage(DraggingSlotFrame.Image, nil)
+			UpdateItemImage(DraggingSlotFrame:FindFirstChild("Image") :: ImageLabel, nil)
 		else
-			UpdateItemImage(DraggingSlotFrame.Image, DraggingSlotInfo.Item, DraggingSlotInfo.Count)
+			UpdateItemImage(
+				DraggingSlotFrame:FindFirstChild("Image") :: ImageLabel,
+				DraggingSlotInfo.Item,
+				DraggingSlotInfo.Count
+			)
 		end
 
 		InventoryClient.DraggingSlot = nil
@@ -597,7 +616,7 @@ function InventoryClient.UpdateDisplay()
 	GridUILayout.CellPadding = UDim2.fromScale(innerCellPadding[1], innerCellPadding[2])
 
 	-- Clearing grid slots if they are no longer present, only really a factor if we change the inventory size
-	for i, itemF: Frame in InventoryGrid:GetChildren() do
+	for _, itemF: TextButton in InventoryGrid:GetChildren() do
 		if itemF.ClassName == "TextButton" and itemF ~= ItemSample then
 			local i, j = itemF.Name:match("(%d+)_(%d+)")
 
@@ -613,7 +632,7 @@ function InventoryClient.UpdateDisplay()
 
 			local currentItemSlot
 
-			local slotInfo: Types.StackData = GetTargetSlotInfo(currentGridPos)
+			local slotInfo: Types.StackData? = GetTargetSlotInfo(currentGridPos)
 
 			if slotInfo == nil then
 				currentItemSlot = UpdateSlotUI(currentGridPos, nil)
@@ -662,6 +681,8 @@ function InventoryClient.UpdateDisplay()
 								moveCount = dragCount
 							end
 						elseif typeof(dragSlotInfo.Item) == "string" and dragSlotInfo.Item == slotInfo.Item then -- basically, if the dragged item is a generic item and is of the same Id as the slotItem
+							assert(typeof(slotInfo.Item) == "string")
+
 							maxStackCount = InventoryUtil.MaxStackData[ItemConfigData[slotInfo.Item].ItemType]
 
 							moveCount = math.min(maxStackCount - slotInfo.Count, dragCount)
@@ -714,32 +735,34 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 		return
 	end
 
-	local stackData = GetTargetSlotInfo(startPos)
-	if not stackData then
+	local startStackData = GetTargetSlotInfo(startPos)
+	if not startStackData then
 		warn("Slot" .. tostring(startPos) .. " is empty")
 		return
 	end
-	-- print(stackData)
+	-- print(startStackData)
 
-	local stackCount = if typeof(stackData.Item) == "string" then stackData.Count else 1
+	local startStackCount = if typeof(startStackData.Item) == "string" then startStackData.Count else 1
 
-	moveCount = moveCount or (stackCount or 1)
+	moveCount = moveCount or (startStackCount or 1)
 
-	-- if the movecount is 0 then we must stop because it will try to to move unique items, as they don't look at count
+	-- if the movecount is 0 then we must stop because it will try to move unique items, as they don't look at count
 	if moveCount <= 0 then
 		return
 	end
 
-	if moveCount > stackCount then
+	if moveCount > startStackCount then
 		warn("there are not enough items for there to move, moving what is there")
-		moveCount = stackCount
+		moveCount = startStackCount
 	end
 
 	-- update the dragging slot
 	-- TODO: move the draggingSlot check inside of the selectedSlot check
+
 	if startPos == InventoryClient.DraggingSlot then
 		-- TECHNICALLY speaking this only works because draggingSlot should always be the selected slot, just be cautious i guess?
-		local stackCount = GetTargetSlotInfo(startPos).Count or 1
+		local stackCount = (GetTargetSlotInfo(startPos) :: Types.StackData).Count or 1
+		-- TODO: I have no idea what the hell I did here with making a new stackCount variable and all that when I could have just used startStackData, nor the reason why.
 
 		if moveCount == stackCount then
 			-- all the items in the stack have been moved, so we must deselect and stop dragging as the slot is (going to be) empty
@@ -755,7 +778,7 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 		end
 		-- if the startPos is instead just the selectedSlot then just update the selected slot
 	elseif startPos == InventoryClient.SelectedSlot then
-		local stackCount = GetTargetSlotInfo(startPos).Count or 1
+		local stackCount = (GetTargetSlotInfo(startPos) :: Types.StackData).Count or 1
 
 		if moveCount == stackCount then
 			-- all the items in the stack have been moved, so we must deselect and stop dragging as the slot is (going to be) empty
@@ -767,7 +790,7 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 			InventoryClient.SelectGridSlot()
 		end
 	elseif endPos == InventoryClient.DraggingSlot then
-		local stackCount = GetTargetSlotInfo(endPos).Count or 1
+		local stackCount = (GetTargetSlotInfo(endPos) :: Types.StackData).Count or 1
 
 		InventoryClient.DraggingCount = stackCount + moveCount
 	end
@@ -776,7 +799,7 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 		InventoryClient.InvData, -- we unregister the items from the start slot, try to register them into the end slot
 		InventoryUtil.UnregisterItem(
 			InventoryClient.InvData,
-			{ Count = if typeof(stackData.Item) == "string" then moveCount else nil, Item = stackData.Item },
+			{ Count = if typeof(startStackData.Item) == "string" then moveCount else nil, Item = startStackData.Item },
 			startPos
 		),
 		endPos
@@ -791,13 +814,13 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 
 	if startPos == InventoryClient.DraggingSlot then
 		-- this is mostly just a check, as for this code to be run, the startPos must have been the one we were dragging but not all of the items were removed, so we need to double check if the DraggingCount matches
-		local stackCount = GetTargetSlotInfo(startPos).Count or 1
+		local stackCount = (GetTargetSlotInfo(startPos) :: Types.StackData).Count or 1
 
 		if InventoryClient.DraggingCount ~= stackCount then
 			warn("updated dragging count should be equal to the new stackCount")
 		end
 	elseif endPos == InventoryClient.DraggingSlot then
-		local stackCount = GetTargetSlotInfo(endPos).Count or 1
+		local stackCount = (GetTargetSlotInfo(startPos) :: Types.StackData).Count or 1
 
 		if InventoryClient.DraggingCount ~= stackCount then
 			warn("updated dragging count should be equal to the new stackCount")
@@ -938,34 +961,36 @@ function InventoryClient.HandleUpdate(
 
 	-- use the update info to do any relevant changes
 	if updateInfo then
+		local updateData = updateInfo.Data
+
 		if updateInfo.Type == "Swap" then
 			-- you can't send metatables via the network so I will need to remake the GridPositions
-			updateInfo.APos = InventoryUtil.GridPosition.new(updateInfo.APos.x, updateInfo.APos.y)
-			updateInfo.BPos = InventoryUtil.GridPosition.new(updateInfo.BPos.x, updateInfo.BPos.y)
+			updateData.APos = InventoryUtil.GridPosition.new(updateData.APos.x, updateData.APos.y)
+			updateData.BPos = InventoryUtil.GridPosition.new(updateData.BPos.x, updateData.BPos.y)
 
-			InventoryClient.Swap(updateInfo.APos, updateInfo.BPos)
+			InventoryClient.Swap(updateData.APos, updateData.BPos)
 		elseif updateInfo.Type == "Move" then
 			-- you can't send metatables via the network so I will need to remake the GridPositions
-			updateInfo.startPos = InventoryUtil.GridPosition.new(updateInfo.startPos.x, updateInfo.startPos.y)
-			updateInfo.endPos = InventoryUtil.GridPosition.new(updateInfo.endPos.x, updateInfo.endPos.y)
+			updateData.startPos = InventoryUtil.GridPosition.new(updateData.startPos.x, updateData.startPos.y)
+			updateData.endPos = InventoryUtil.GridPosition.new(updateData.endPos.x, updateData.endPos.y)
 
-			InventoryClient.Move(updateInfo.startPos, updateInfo.endPos, updateInfo.moveCount)
+			InventoryClient.Move(updateData.startPos, updateData.endPos, updateData.moveCount)
 		elseif updateInfo.Type == "Add" then
 			-- you can't send metatables via the network so I will need to remake the GridPositions
-			if updateInfo.targetGridPos then
-				updateInfo.targetGridPos =
-					InventoryUtil.GridPosition.new(updateInfo.targetGridPos.x, updateInfo.targetGridPos.y)
+			if updateData.targetGridPos then
+				updateData.targetGridPos =
+					InventoryUtil.GridPosition.new(updateData.targetGridPos.x, updateData.targetGridPos.y)
 			end
 
-			InventoryClient.Add(updateInfo.itemsToAdd, updateInfo.targetGridPos)
+			InventoryClient.Add(updateData.itemsToAdd, updateData.targetGridPos)
 		elseif updateInfo.Type == "Remove" then
 			-- you can't send metatables via the network so I will need to remake the GridPositions
-			if updateInfo.targetGridPos then
-				updateInfo.targetGridPos =
-					InventoryUtil.GridPosition.new(updateInfo.targetGridPos.x, updateInfo.targetGridPos.y)
+			if updateData.targetGridPos then
+				updateData.targetGridPos =
+					InventoryUtil.GridPosition.new(updateData.targetGridPos.x, updateData.targetGridPos.y)
 			end
 
-			InventoryClient.Remove(updateInfo.itemsToRemove, updateInfo.targetGridPos)
+			InventoryClient.Remove(updateData.itemsToRemove, updateData.targetGridPos)
 		end
 	end
 
@@ -1102,7 +1127,7 @@ function InventoryClient.Start()
 				-- Handle the dragging of items
 
 				if InventoryClient.DraggingSlot then
-					local DraggingSlotFrame: TextButton = GetTargetSlotFrame(InventoryClient.DraggingSlot)
+					local DraggingSlotFrame: TextButton? = GetTargetSlotFrame(InventoryClient.DraggingSlot)
 
 					local DraggingImage: ImageLabel = DraggingOverlay:WaitForChild("DragImage")
 
@@ -1115,10 +1140,10 @@ function InventoryClient.Start()
 					end
 
 					if DraggingImage then -- The SlotFrame still has the image so parent DraggingImage to the DraggingOverlay if it was not already done
-						DraggingImage.Size = UDim2.fromOffset(
-							ItemSample.Image.AbsoluteSize.X * 1.3,
-							ItemSample.Image.AbsoluteSize.Y * 1.3
-						)
+						local itemSampleImage = ItemSample:WaitForChild("Image") :: ImageLabel
+
+						DraggingImage.Size =
+							UDim2.fromOffset(itemSampleImage.AbsoluteSize.X * 1.3, itemSampleImage.AbsoluteSize.Y * 1.3)
 						DraggingImage.Position =
 							UDim2.fromOffset(InventoryClient.MousePosition.X, InventoryClient.MousePosition.Y)
 					else -- The slotFrame's image should be in the draggingOverlay

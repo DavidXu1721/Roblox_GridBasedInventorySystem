@@ -871,7 +871,7 @@ local function DeepEqual<K, V>(a: { [K]: V }, b: { [K]: V }): boolean
 	end
 
 	for k, v in a do
-		if not DeepEqual(v, b[k]) then
+		if not DeepEqual(v :: any, b[k] :: any) then
 			return false
 		end
 	end

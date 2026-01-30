@@ -32,7 +32,7 @@ local AUTOSAVE_TIME = 60 * 3
 --[[Data]]
 --
 local ItemConfigData = require(RS.Data.ItemConfigs)
-local StarterItems: { string: number } = {
+local StarterItems: { [string]: number } = {
 	["Chestplate"] = 1,
 	["Rock"] = 60,
 	["Sword"] = 12,
@@ -47,24 +47,20 @@ local InventoryServer: {
 	AllInventories: {
 		[Player]: {
 			NextVersionNumber: number,
-			InventoryVersions: {
-				VersionNumber: number,
-				InventoryData: Types.Inventory,
-				LastUpdate: Types.InventoryUpdateInfo,
-			},
+			InventoryVersions: { Types.InventoryVersionHistoryData },
 		},
 	},
+	Janitors: {
+		[Player]: typeof(Janitor.new()),
+	},
+	[string]: (...any) -> ...any,
 } =
-	{}
-
-InventoryServer.AllInventories = {}
-InventoryServer.Janitors = {}
+	{
+		AllInventories = {},
+		Janitors = {},
+	}
 
 -- [[Functions]] --
-function GetTargetSlotInfo(plr: Player, slotPos: Types.GridPosition | { x: number, y: number })
-	-- I am thinking of doing a check to see if the slotPos is actually in bounds, but probably not necessary
-	return InventoryServer.AllInventories[plr].Grid[slotPos.y][slotPos.x]
-end
 
 -- Player Added
 function InventoryServer.OnPlayerAdded(plr: Player)
@@ -75,6 +71,13 @@ function InventoryServer.OnPlayerAdded(plr: Player)
 	InventoryServer.Janitors[plr] = janitor
 	janitor:GiveChore(function()
 		InventoryServer.Janitors[plr] = nil
+	end)
+
+	-- Create the player inventory version list
+	InventoryServer.AllInventories[plr] = { InventoryVersions = {}, NextVersionNumber = 0 }
+
+	janitor:GiveChore(function()
+		InventoryServer.AllInventories[plr] = nil
 	end)
 
 	--Creating Inventory
@@ -91,12 +94,9 @@ function InventoryServer.OnPlayerAdded(plr: Player)
 		end
 	end
 
-	InventoryServer.AllInventories[plr] = inv
 	print(inv)
-	janitor:GiveChore(function()
-		InventoryServer.AllInventories[plr] = nil
-	end)
 
+	--Add the starter items
 	local playerItems = table.clone(StarterItems) -- a shallow copy should be sufficient
 
 	for itemId, count in pairs(playerItems) do
@@ -117,6 +117,11 @@ function InventoryServer.OnPlayerAdded(plr: Player)
 	end
 
 	print(inv)
+
+	-- Add the invData to the player version list
+	InventoryServer.CommitVersion(plr)
+
+	-- TODO: refer back to the tutorial for the rest of this function cause what the hell is that?
 
 	-- Waiting for character to load in the first time
 	if not plr.Character then
@@ -158,7 +163,10 @@ function InventoryServer.OnPlayerAdded(plr: Player)
 	end
 
 	-- Connecting character added
-	task.spawn(charAdded, plr.Character)
+	if plr.Character then
+		task.spawn(charAdded, plr.Character)
+	else
+	end
 	-- whenever a player leaves the game, the Player object isn't fully destroyed, thus connected events must be
 	-- disconnected to avoid a memory leak
 	janitor:GiveChore(plr.CharacterAdded:Connect(charAdded))
@@ -172,6 +180,28 @@ function InventoryServer.OnPlayerRemoving(plr: Player)
 	-- Clearing extra data & saving
 	InventoryServer.SaveData(plr)
 	InventoryServer.Janitors[plr]:Clean()
+end
+
+-- Committing Versions
+-- after a considerable amount of brainstorming I have come to the following model. Whenever a version is committed, the inventory data is set, aka, we will add changes to a "change stack", then we do this function (call it "ApplyChanges" or something) and have the inventory data update from there, whenever we change something on the backlog (still use the SAME function), we "rewind" the changes until we hit the updated backlog, then go back through to the present, some changes are not reversable such as remove and maybe add (if it suddenly became not possible due to emplty slots being filled, such as via a stack of items being split up (probably keep deep (at least to stack level) copies for those instances)
+function InventoryServer.CommitVersion(
+	plr: Player,
+	newInvData: Types.Inventory,
+	updateInfo: Types.InventoryUpdateInfo,
+	newVersionNumber: number
+)
+	local inventoryCommitData: Types.InventoryVersionHistoryData = {
+		LastUpdate = updateInfo,
+	}
+
+	if newVersionNumber == nil then -- if the version number is nil then that means we are adding a new version
+		newVersionNumber = InventoryServer.AllInventories[plr].NextVersionNumber
+		inventoryCommitData.VersionNumber = newVersionNumber
+
+		-- clear the inv data in the previous versions
+
+		table.insert(InventoryServer.AllInventories[plr].InventoryVersions, inventoryCommitData)
+	end
 end
 
 --Registering new items
@@ -199,7 +229,7 @@ function InventoryServer.Move(plr: Player, startPos: Types.GridPosition, endPos:
 		return
 	end
 
-	local stackData = GetTargetSlotInfo(plr, startPos)
+	local stackData = InventoryUtil.GetTargetSlotInfo(plr, startPos)
 	if not stackData then
 		warn("Slot" .. tostring(startPos) .. " is empty")
 		return
@@ -247,6 +277,7 @@ function InventoryServer.Move(plr: Player, startPos: Types.GridPosition, endPos:
 
 	Signal.FireClient(
 		plr,
+		--TODO: Update the InventoryUpdateInfo formats
 		"InventoryClient:Update",
 		InventoryServer.GetInventoryData(plr),
 		{ Type = "Move", startPos = startPos, endPos = endPos, moveCount = moveCount }
@@ -260,8 +291,8 @@ function InventoryServer.Swap(plr: Player, APos: Types.GridPosition, BPos: Types
 		return
 	end
 
-	local ASlot = InventoryServer.UnregisterItem(plr, GetTargetSlotInfo(plr, APos), APos)
-	local BSlot = InventoryServer.UnregisterItem(plr, GetTargetSlotInfo(plr, BPos), BPos)
+	local ASlot = InventoryServer.UnregisterItem(plr, InventoryUtil.GetTargetSlotInfo(plr, APos), APos)
+	local BSlot = InventoryServer.UnregisterItem(plr, InventoryUtil.GetTargetSlotInfo(plr, BPos), BPos)
 	InventoryServer.RegisterItem(plr, ASlot, BPos)
 	InventoryServer.RegisterItem(plr, BSlot, APos)
 

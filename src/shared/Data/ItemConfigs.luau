@@ -9,10 +9,12 @@ local StarterGui = game:GetService("StarterGui")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 
---[[Folders]]--
+--[[Folders]]
+--
 local RSModules = RS.Modules
 
---[[Types]]--
+--[[Types]]
+--
 local Types = require(RSModules.Types)
 
 local ItemConfigs: { [string]: Types.ItemConfig } =
@@ -79,7 +81,7 @@ local ItemConfigs: { [string]: Types.ItemConfig } =
 		},
 	}
 
-for id, itemData in pairs(ItemConfigs) do -- this just gives us a way to get the itemId from inside of the itemDataObject
+for id, itemData in pairs(ItemConfigs) do -- this just gives us a way to get the itemId from inside of the ItemConfig table
 	itemData.Id = id
 end
 

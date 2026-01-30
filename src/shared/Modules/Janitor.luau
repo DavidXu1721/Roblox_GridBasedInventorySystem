@@ -29,19 +29,19 @@ end
 function Janitor:GiveChore(_chore, ...)
 	local chore = _chore
 	if typeof(_chore) == "function" then
-		local args = {...}
-		chore = function() _chore(table.unpack(args)) end
+		local args = { ... }
+		chore = function()
+			_chore(table.unpack(args))
+		end
 	end
 	table.insert(self.Chores, chore)
 end
 
 -- Cleaning
 function Janitor:Clean()
-	
 	-- Looping Chores
 	local i, chore = next(self.Chores)
 	while #self.Chores > 0 do
-		
 		-- Doing Chore
 		self.Chores[i] = nil
 		if typeof(chore) == "RBXScriptConnection" then
@@ -50,7 +50,7 @@ function Janitor:Clean()
 			chore:Cancel()
 		elseif typeof(chore) == "function" then
 			chore()
-		elseif typeof(chore) == "Instance" and chore.ClassName == "AnimationTrack" then
+		elseif typeof(chore) == "Instance" and chore:IsA("AnimationTrack") then
 			chore:Stop()
 		else
 			local success, result = pcall(function()
@@ -60,22 +60,19 @@ function Janitor:Clean()
 				warn("Janitor was not able to do chore: " .. result)
 			end
 		end
-		
+
 		i, chore = next(self.Chores)
 	end
-	
 end
 
 -- Creating
 function Janitor.new()
-	
 	-- Creating Self
-	local self = setmetatable({}, {__index = Janitor})
+	local self = setmetatable({}, { __index = Janitor })
 	self.Chores = {}
-	
+
 	-- Returning
 	return self
-	
 end
 
 -- Destroying
