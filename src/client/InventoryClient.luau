@@ -44,6 +44,8 @@ local HotbarFrame = GUI:WaitForChild("Hotbar")
 local InventoryFrame = GUI:WaitForChild("Inventory")
 InventoryFrame.Visible = false
 InventoryFrame.Active = true
+local InstructionTxtBox = InventoryFrame:WaitForChild("Instructions")
+InstructionTxtBox.Visible = false
 local InventoryButton = GUI:WaitForChild("InvButton")
 local ErrorText = GUI:WaitForChild("Error")
 ErrorText.Visible = false
@@ -56,8 +58,6 @@ local ItemDescScrollingFrame = ItemInfoFrame:WaitForChild("ItemDescScrollingFram
 local ItemDescTxtBox = ItemDescScrollingFrame:WaitForChild("ItemDesc")
 local SlotButton = ItemInfoFrame:WaitForChild("Slot")
 local DropButton = ItemInfoFrame:WaitForChild("Drop")
-local InstructionTxtBox = ItemInfoFrame:WaitForChild("Instructions")
-InstructionTxtBox.Visible = false
 
 local GridScrollingFrame = InventoryFrame:WaitForChild("GridScrollingFrame")
 local InventoryGrid = GridScrollingFrame:WaitForChild("Grid"):WaitForChild("GridContents")
@@ -71,7 +71,7 @@ local ArmorInnerFrame = ArmorFrame:WaitForChild("Inner")
 --[[Functions]]
 --
 
-function ProcessInventoryData(invData) -- the fact that i even have to do this is absolutely retarded
+function ProcessInventoryData(invData) -- the fact that i even have to do this is absolutely retarded, why is does k turned into a goddamn string?!!
 	for i, gridRow in ipairs(invData.Grid) do
 		for key, stackData in pairs(gridRow) do
 			if typeof(key) == "number" then
@@ -480,6 +480,7 @@ function InventoryClient.StartDraggingSlot(targetSlotPos: Types.GridPosition?, d
 	end
 
 	InventoryClient.DraggingJanitor:GiveChore(DropButton.MouseButton1Up:Connect(function()
+		-- If the player lets go of the item on the drop button, they drop the item
 		local draggingSlot = GetTargetSlotInfo(InventoryClient.DraggingSlot)
 
 		print(
@@ -616,6 +617,7 @@ function InventoryClient.UpdateDisplay()
 	GridUILayout.CellPadding = UDim2.fromScale(innerCellPadding[1], innerCellPadding[2])
 
 	-- Clearing grid slots if they are no longer present, only really a factor if we change the inventory size
+	-- TODO: I honestly doubt that this will turn into a performance issue, but I guess I can make it so that it only runs when I actually changed the grid size
 	for _, itemF: TextButton in InventoryGrid:GetChildren() do
 		if itemF.ClassName == "TextButton" and itemF ~= ItemSample then
 			local i, j = itemF.Name:match("(%d+)_(%d+)")
@@ -668,7 +670,8 @@ function InventoryClient.UpdateDisplay()
 						local dragCount = InventoryClient.DraggingCount
 						local maxStackCount = nil
 
-						if slotInfo == nil then -- we can move all of the dragged items into the empty slot, but we might as well double check to see if the drag count we have isn't somehow more than the max stackCount of the item type
+						if slotInfo == nil then
+							-- we can move all of the dragged items into the empty slot, but we might as well double check to see if the drag count we have isn't somehow more than the max stackCount of the item type
 							maxStackCount = if typeof(dragSlotInfo.Item) == "table"
 								then 1
 								else InventoryUtil.MaxStackData[ItemConfigData[dragSlotInfo.Item].ItemType]
@@ -680,7 +683,8 @@ function InventoryClient.UpdateDisplay()
 							else
 								moveCount = dragCount
 							end
-						elseif typeof(dragSlotInfo.Item) == "string" and dragSlotInfo.Item == slotInfo.Item then -- basically, if the dragged item is a generic item and is of the same Id as the slotItem
+						elseif typeof(dragSlotInfo.Item) == "string" and dragSlotInfo.Item == slotInfo.Item then
+							--if the dragged item is a generic item and is of the same Id as the slotItem it was dragged to
 							assert(typeof(slotInfo.Item) == "string")
 
 							maxStackCount = InventoryUtil.MaxStackData[ItemConfigData[slotInfo.Item].ItemType]
@@ -795,8 +799,9 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 		InventoryClient.DraggingCount = stackCount + moveCount
 	end
 
+	-- we unregister the items from the start slot, then try to register them into the end slot
 	local overflowItems = InventoryUtil.RegisterItem(
-		InventoryClient.InvData, -- we unregister the items from the start slot, try to register them into the end slot
+		InventoryClient.InvData,
 		InventoryUtil.UnregisterItem(
 			InventoryClient.InvData,
 			{ Count = if typeof(startStackData.Item) == "string" then moveCount else nil, Item = startStackData.Item },
@@ -807,7 +812,7 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 
 	if overflowItems then
 		warn("items have overflowed, adjusting movecount and returning items unable to be moved")
-		moveCount -= overflowItems.Count or 1 -- adjust the movecount so it reflects the number of items that actually got moved
+		moveCount -= overflowItems.Count or 1
 	end
 
 	InventoryUtil.RegisterItem(InventoryClient.InvData, overflowItems, startPos)
@@ -878,7 +883,7 @@ function InventoryClient.Add(itemsToAdd: Types.StackData?, targetGridPos: Types.
 		return
 	end
 
-	local fullStackDragged -- the way this works is as follows: if you were dragging the entire slot, (aka, DraggingCount == slotInfo.count) then the increase in the number of items in the slot is reflected in the dragging count, if not all of the items
+	local fullStackDragged -- the way this works is as follows: if you were dragging the entire slot, (aka, DraggingCount == slotInfo.count) then the increase in the number of items in the slot is reflected in the dragging count, otherwise there is no increase in the dragging count and the newly added items will be left undragged
 
 	if InventoryClient.DraggingSlot then
 		local oldDraggingSlotInfo = GetTargetSlotInfo(InventoryClient.DraggingSlot)
@@ -1099,12 +1104,16 @@ function InventoryClient.Start()
 				if InventoryClient.OpenCloseTimePosition == InventoryClient.OpenCloseTimePeriod then
 					-- when the inventory is fully open, make the hotbar frame invisible
 					HotbarFrame.Visible = false
+					-- and the instructions visible
+					InstructionTxtBox.Visible = true
 					-- and only when the inventory is fully open will be make the inventory interactable
 					if not InventoryFrame.Interactable then
 						InventoryFrame.Interactable = true
 					end
 				else
 					HotbarFrame.Visible = true
+
+					InstructionTxtBox.Visible = false
 
 					if InventoryFrame.Interactable then
 						InventoryFrame.Interactable = false
