@@ -281,6 +281,9 @@ end
 
 -- Opening and closing
 function InventoryClient.ToggleInventory(toSet: boolean)
+	if InventoryClient.DraggingSlot and not toSet then
+		InventoryClient.StopDraggingSlot()
+	end
 	InventoryClient.IsOpen = toSet
 end
 
