@@ -61,7 +61,7 @@ export type InventoryVersionHistoryData = {
 
 export type ItemConfig = {
 	Name: string,
-	Id: string,
+	Id: string?,
 	IconId: string?,
 	Description: string?,
 	ItemType: string,

@@ -1,5 +1,3 @@
---!nocheck
-
 ---[[Services]]---
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
@@ -34,7 +32,7 @@ local AUTOSAVE_TIME = 60 * 3
 --[[Data]]
 --
 local ItemConfigData = require(RS.Data.ItemConfigs)
-local StarterItems: { string: number } = {
+local StarterItems: { [string]: number } = {
 	["Chestplate"] = 1,
 	["Rock"] = 60,
 	["Sword"] = 12,
@@ -49,18 +47,20 @@ local InventoryServer: {
 	AllInventories: {
 		[Player]: {
 			NextVersionNumber: number,
-			InventoryVersions: {
-				VersionNumber: number,
-				InventoryData: Types.Inventory,
-				LastUpdate: Types.InventoryUpdateInfo,
-			},
+			InventoryVersions: { Types.InventoryVersionHistoryData },
 		},
 	},
+	Janitors: {
+		[Player]: typeof(Janitor.new()),
+	},
+	[string]: (...any) -> ...any,
 } =
-	{}
+	{
+		AllInventories = {},
+		Janitors = {},
+	}
 
-InventoryServer.AllInventories = {}
-InventoryServer.Janitors = {}
+-- [[Functions]] --
 
 -- Player Added
 function InventoryServer.OnPlayerAdded(plr: Player)
@@ -71,6 +71,13 @@ function InventoryServer.OnPlayerAdded(plr: Player)
 	InventoryServer.Janitors[plr] = janitor
 	janitor:GiveChore(function()
 		InventoryServer.Janitors[plr] = nil
+	end)
+
+	-- Create the player inventory version list
+	InventoryServer.AllInventories[plr] = { InventoryVersions = {}, NextVersionNumber = 0 }
+
+	janitor:GiveChore(function()
+		InventoryServer.AllInventories[plr] = nil
 	end)
 
 	--Creating Inventory
@@ -87,12 +94,9 @@ function InventoryServer.OnPlayerAdded(plr: Player)
 		end
 	end
 
-	InventoryServer.AllInventories[plr] = inv
 	print(inv)
-	janitor:GiveChore(function()
-		InventoryServer.AllInventories[plr] = nil
-	end)
 
+	--Add the starter items
 	local playerItems = table.clone(StarterItems) -- a shallow copy should be sufficient
 
 	for itemId, count in pairs(playerItems) do
@@ -104,15 +108,20 @@ function InventoryServer.OnPlayerAdded(plr: Player)
 					UniqueId = HttpService:GenerateGUID(),
 					ItemStats = TableUtil.Copy(ItemConfigData[itemId].ItemStats, true),
 				}
-				InventoryUtil.RegisterItem(InventoryServer.AllInventories[plr], { Item = newItem })
+				InventoryServer.RegisterItem(plr, { Item = newItem })
 			end
 		else -- the item is a generic type, (aka not distinguishable from others of the same itemId)
-			InventoryUtil.RegisterItem(InventoryServer.AllInventories[plr], { Item = itemId, Count = count })
-			-- InventoryUtil.UnregisterItem(InventoryServer.AllInventories[plr], itemId, count)
+			InventoryServer.RegisterItem(plr, { Item = itemId, Count = count })
+			-- InventoryServer.UnregisterItem(plr, itemId, count)
 		end
 	end
 
 	print(inv)
+
+	-- Add the invData to the player version list
+	InventoryServer.CommitVersion(plr)
+
+	-- TODO: refer back to the tutorial for the rest of this function cause what the hell is that?
 
 	-- Waiting for character to load in the first time
 	if not plr.Character then
@@ -130,32 +139,36 @@ function InventoryServer.OnPlayerAdded(plr: Player)
 		InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
 		InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
 
-		-- while true do
-		-- 	InventoryServer.Swap(plr, InventoryUtil.GridPosition.new(4, 6), InventoryUtil.GridPosition.new(5, 7))
-		-- 	task.wait(1)
-		-- end
+		--while true do
+		--	InventoryServer.Swap(plr, InventoryUtil.GridPosition.new(4,6), InventoryUtil.GridPosition.new(5,7))
+		--	task.wait(1)
+		--end
 
-		-- task.wait(4)
+		--task.wait(4)
 
-		-- while true do
-		-- 	if InventoryServer.Add(plr, { Item = "Coin", Count = 30 }) then
-		-- 		break
-		-- 	end
-		-- 	task.wait(1)
-		-- end
+		--while true do
+		--	if InventoryServer.Add(plr, {Item= 'Coin', Count=30}) then
+		--		break
+		--	end
+		--	task.wait(1)
+		--end
 
-		-- task.wait(4)
+		--task.wait(4)
 
-		-- while true do
-		-- 	InventoryServer.Remove(plr, { Item = "Coin", Count = 10 })
+		--while true do
+		--	InventoryServer.Remove(plr, {Item= 'Coin', Count=10})
 
-		-- 	task.wait(0.5)
-		-- end
+		--	task.wait(0.5)
+		--end
 	end
 
 	-- Connecting character added
-	task.spawn(charAdded, plr.Character)
-	-- whenever a player leaves the game, the Player object isn't fully destroyed, thus connected events must be disconnected to avoid a memory leak
+	if plr.Character then
+		task.spawn(charAdded, plr.Character)
+	else
+	end
+	-- whenever a player leaves the game, the Player object isn't fully destroyed, thus connected events must be
+	-- disconnected to avoid a memory leak
 	janitor:GiveChore(plr.CharacterAdded:Connect(charAdded))
 	-- TODO: add code to disconnect the this when the player leaves
 end
@@ -169,6 +182,46 @@ function InventoryServer.OnPlayerRemoving(plr: Player)
 	InventoryServer.Janitors[plr]:Clean()
 end
 
+-- Committing Versions
+-- after a considerable amount of brainstorming I have come to the following model. Whenever a version is committed, the inventory data is set, aka, we will add changes to a "change stack", then we do this function (call it "ApplyChanges" or something) and have the inventory data update from there, whenever we change something on the backlog (still use the SAME function), we "rewind" the changes until we hit the updated backlog, then go back through to the present, some changes are not reversable such as remove and maybe add (if it suddenly became not possible due to emplty slots being filled, such as via a stack of items being split up (probably keep deep (at least to stack level) copies for those instances)
+function InventoryServer.CommitVersion(
+	plr: Player,
+	newInvData: Types.Inventory,
+	updateInfo: Types.InventoryUpdateInfo,
+	newVersionNumber: number
+)
+	local inventoryCommitData: Types.InventoryVersionHistoryData = {
+		LastUpdate = updateInfo,
+	}
+
+	if newVersionNumber == nil then -- if the version number is nil then that means we are adding a new version
+		newVersionNumber = InventoryServer.AllInventories[plr].NextVersionNumber
+		inventoryCommitData.VersionNumber = newVersionNumber
+
+		-- clear the inv data in the previous versions
+
+		table.insert(InventoryServer.AllInventories[plr].InventoryVersions, inventoryCommitData)
+	end
+end
+
+--Registering new items
+function InventoryServer.RegisterItem(
+	plr: Player,
+	itemToRegister: Types.StackData?,
+	targetGridPos: Types.GridPosition?
+): { Item: string, Count: number } | { Item: Types.UniqueItemData } | nil
+	return InventoryUtil.RegisterItem(InventoryServer.AllInventories[plr], itemToRegister, targetGridPos)
+end
+
+--Unregistering items
+function InventoryServer.UnregisterItem(
+	plr: Player,
+	itemToUnregister: Types.StackData | { Item: string }?,
+	targetGridPos: Types.GridPosition?
+): { Item: string, Count: number } | { Item: Types.UniqueItemData } | nil
+	return InventoryUtil.UnregisterItem(InventoryServer.AllInventories[plr], itemToUnregister, targetGridPos)
+end
+
 -- Move Item Slots within the inventory grid
 function InventoryServer.Move(plr: Player, startPos: Types.GridPosition, endPos: Types.GridPosition, moveCount: number?)
 	if not InventoryServer.AllInventories[plr] then
@@ -176,7 +229,7 @@ function InventoryServer.Move(plr: Player, startPos: Types.GridPosition, endPos:
 		return
 	end
 
-	local stackData = InventoryUtil.GetSlotInfo(InventoryServer.AllInventories[plr], startPos)
+	local stackData = InventoryUtil.GetTargetSlotInfo(plr, startPos)
 	if not stackData then
 		warn("Slot" .. tostring(startPos) .. " is empty")
 		return
@@ -198,19 +251,19 @@ function InventoryServer.Move(plr: Player, startPos: Types.GridPosition, endPos:
 	end
 
 	-- process the register/unregistering
-	local itemsToMove = InventoryUtil.UnregisterItem(
-		InventoryServer.AllInventories[plr],
+	local itemsToMove = InventoryServer.UnregisterItem(
+		plr,
 		{ Count = if typeof(stackData.Item) == "string" then moveCount else nil, Item = stackData.Item },
 		startPos
 	)
 
-	local overflowItems = InventoryUtil.RegisterItem(
-		InventoryServer.AllInventories[plr], -- we unregister the items from the start slot, try to register them into the end slot
+	local overflowItems = InventoryServer.RegisterItem(
+		plr, -- we unregister the items from the start slot, try to register them into the end slot
 		itemsToMove,
 		endPos
 	)
 
-	InventoryUtil.RegisterItem(InventoryServer.AllInventories[plr], overflowItems, startPos)
+	InventoryServer.RegisterItem(plr, overflowItems, startPos)
 	-- do some checks to detect if either not all the items could be moved, or if nothing was moved at all
 	if overflowItems then
 		if TableUtil.DeepEqual(overflowItems, itemsToMove) then
@@ -224,9 +277,10 @@ function InventoryServer.Move(plr: Player, startPos: Types.GridPosition, endPos:
 
 	Signal.FireClient(
 		plr,
+		--TODO: Update the InventoryUpdateInfo formats
 		"InventoryClient:Update",
 		InventoryServer.GetInventoryData(plr),
-		{ Type = "Move", Data = { startPos = startPos, endPos = endPos, moveCount = moveCount } }
+		{ Type = "Move", startPos = startPos, endPos = endPos, moveCount = moveCount }
 	)
 end
 
@@ -237,18 +291,10 @@ function InventoryServer.Swap(plr: Player, APos: Types.GridPosition, BPos: Types
 		return
 	end
 
-	local ASlot = InventoryUtil.UnregisterItem(
-		InventoryServer.AllInventories[plr],
-		InventoryUtil.GetSlotInfo(InventoryServer.AllInventories[plr], APos),
-		APos
-	)
-	local BSlot = InventoryUtil.UnregisterItem(
-		InventoryServer.AllInventories[plr],
-		InventoryUtil.GetSlotInfo(InventoryServer.AllInventories[plr], BPos),
-		BPos
-	)
-	InventoryUtil.RegisterItem(InventoryServer.AllInventories[plr], ASlot, BPos)
-	InventoryUtil.RegisterItem(InventoryServer.AllInventories[plr], BSlot, APos)
+	local ASlot = InventoryServer.UnregisterItem(plr, InventoryUtil.GetTargetSlotInfo(plr, APos), APos)
+	local BSlot = InventoryServer.UnregisterItem(plr, InventoryUtil.GetTargetSlotInfo(plr, BPos), BPos)
+	InventoryServer.RegisterItem(plr, ASlot, BPos)
+	InventoryServer.RegisterItem(plr, BSlot, APos)
 
 	if ASlot == nil and BSlot == nil then
 		warn("both slots are empty, no nothing happened")
@@ -259,7 +305,7 @@ function InventoryServer.Swap(plr: Player, APos: Types.GridPosition, BPos: Types
 		plr,
 		"InventoryClient:Update",
 		InventoryServer.GetInventoryData(plr),
-		{ Type = "Swap", Data = { APos = APos, BPos = BPos } }
+		{ Type = "Swap", APos = APos, BPos = BPos }
 	)
 end
 
@@ -274,7 +320,7 @@ function InventoryServer.Add(plr: Player, itemsToAdd: Types.StackData?, targetGr
 		return
 	end
 
-	local overflowItems = InventoryUtil.RegisterItem(InventoryServer.AllInventories[plr], itemsToAdd, targetGridPos)
+	local overflowItems = InventoryServer.RegisterItem(plr, itemsToAdd, targetGridPos)
 
 	if overflowItems then
 		if TableUtil.DeepEqual(overflowItems, itemsToAdd) then
@@ -293,7 +339,7 @@ function InventoryServer.Add(plr: Player, itemsToAdd: Types.StackData?, targetGr
 		plr,
 		"InventoryClient:Update",
 		InventoryServer.GetInventoryData(plr),
-		{ Type = "Add", Data = { itemsToAdd = itemsToAdd, targetGridPos = targetGridPos } }
+		{ Type = "Add", itemsToAdd = itemsToAdd, targetGridPos = targetGridPos }
 	)
 
 	return overflowItems
@@ -311,13 +357,13 @@ function InventoryServer.Remove(plr: Player, itemsToRemove: Types.StackData?, ta
 	end
 
 	-- NOTE: here we actually need to make sure that the inventory that we are removing from actually has the the items. This will ERROR if there are not enough items present
-	local removedItems = InventoryUtil.UnregisterItem(InventoryServer.AllInventories[plr], itemsToRemove, targetGridPos)
+	local removedItems = InventoryServer.UnregisterItem(plr, itemsToRemove, targetGridPos)
 
 	Signal.FireClient(
 		plr,
 		"InventoryClient:Update",
 		InventoryServer.GetInventoryData(plr),
-		{ Type = "Remove", Data = { itemsToRemove = itemsToRemove, targetGridPos = targetGridPos } }
+		{ Type = "Remove", itemsToRemove = itemsToRemove, targetGridPos = targetGridPos }
 	)
 
 	return removedItems

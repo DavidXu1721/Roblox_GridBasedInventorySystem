@@ -304,12 +304,16 @@ function InventoryUtil.UnregisterItem(
 	error("Code for this not implemented yet.") -- TODO: Add code to handle this
 end
 
-function InventoryUtil.GetTargetSlotInfo(
+function InventoryUtil.GetSlotInfo(
 	invData: Types.Inventory,
-	slotPos: Types.GridPosition | { x: number, y: number }
+	slotPos: Types.GridPosition | { x: number, y: number }?
 ): Types.StackData?
 	-- I am thinking of doing a check to see if the slotPos is actually in bounds, but probably not necessary
-	return invData.Grid[slotPos.y][slotPos.x]
+	if slotPos == nil then
+		return nil
+	else
+		return invData.Grid[slotPos.y][slotPos.x]
+	end
 end
 
 return InventoryUtil
