@@ -190,6 +190,18 @@ local function UpdateSlotUI(gridPos: Types.GridPosition, slotInfo: Types.StackDa
 	return itemSlot
 end
 
+local function IsDraggingFullSlot()
+	local fullStackDragged = nil -- the way this works is as follows: if you were dragging the entire slot, (aka, DraggingCount == slotInfo.count) then the increase in the number of items in the slot is reflected in the dragging count, otherwise there is no increase in the dragging count and the newly added items will be left undragged
+
+	if InventoryClient.DraggingSlot then
+		local oldDraggingSlotInfo = InventoryUtil.GetSlotInfo(InventoryClient.InvData, InventoryClient.DraggingSlot)
+
+		fullStackDragged = InventoryClient.DraggingCount == (oldDraggingSlotInfo.Count or 1) --tbh the 'or' shouldn't ever be considered since unique items can't stack, but it probably won't matter
+	end
+
+	return fullStackDragged
+end
+
 ---------------------------------------------------------------------------------
 
 InventoryClient.OpenPosition =
@@ -731,31 +743,29 @@ end
 
 -- Move Item Slots within the inventory grid
 function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPosition, moveCount: number?)
-	if not InventoryClient.InvData then
-		warn("LocalPlayer's inventory does not exist")
-		return
+	local invUtilCoro = coroutine.create(InventoryUtil.MoveSlot)
+
+	local fullStackDragged = IsDraggingFullSlot()
+
+	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, startPos, endPos, moveCount)
+
+	if success and result[1] == 1 then
+		if result[2] == "InvData not given" then
+			warn("LocalPlayer's inventory does not exist")
+			coroutine.close(invUtilCoro)
+			return
+		elseif result[2] == "Slot is empty" then
+			warn("Slot" .. tostring(startPos) .. " is empty")
+			coroutine.close(invUtilCoro)
+			return
+		else
+			error("ERROR: Invalid result message -- ", result[2])
+		end
+	elseif not success then
+		error(result)
 	end
 
-	local startStackData = InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos)
-	if not startStackData then
-		warn("Slot" .. tostring(startPos) .. " is empty")
-		return
-	end
-	-- print(startStackData)
-
-	local startStackCount = if typeof(startStackData.Item) == "string" then startStackData.Count else 1
-
-	moveCount = moveCount or (startStackCount or 1)
-
-	-- if the movecount is 0 then we must stop because it will try to move unique items, as they don't look at count
-	if moveCount <= 0 then
-		return
-	end
-
-	if moveCount > startStackCount then
-		warn("there are not enough items for there to move, moving what is there")
-		moveCount = startStackCount
-	end
+	print(result[1])
 
 	-- update the dragging slot
 	-- TODO: move the draggingSlot check inside of the selectedSlot check
@@ -763,7 +773,6 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 	if startPos == InventoryClient.DraggingSlot then
 		-- TECHNICALLY speaking this only works because draggingSlot should always be the selected slot, just be cautious i guess?
 		local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData).Count or 1
-		-- TODO: I have no idea what the hell I did here with making a new stackCount variable and all that when I could have just used startStackData, nor the reason why.
 
 		if moveCount == stackCount then
 			-- all the items in the stack have been moved, so we must deselect and stop dragging as the slot is (going to be) empty
@@ -775,7 +784,7 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 			InventoryClient.StopDraggingSlot()
 			InventoryClient.SelectGridSlot()
 		else -- not all the items in the stack were moved, there are still some left, so we have to update the draggingCount
-			InventoryClient.DraggingCount = stackCount - moveCount
+			InventoryClient.DraggingCount = math.min(InventoryClient.DraggingCount, stackCount - moveCount)
 		end
 		-- if the startPos is instead just the selectedSlot then just update the selected slot
 	elseif startPos == InventoryClient.SelectedSlot then
@@ -792,42 +801,42 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 		end
 	elseif endPos == InventoryClient.DraggingSlot then
 		local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, endPos) :: Types.StackData).Count or 1
-
-		InventoryClient.DraggingCount = stackCount + moveCount
-	end
-
-	-- we unregister the items from the start slot, then try to register them into the end slot
-	local overflowItems = InventoryUtil.RegisterItem(
-		InventoryClient.InvData,
-		InventoryUtil.UnregisterItem(
-			InventoryClient.InvData,
-			{ Count = if typeof(startStackData.Item) == "string" then moveCount else nil, Item = startStackData.Item },
-			startPos
-		),
-		endPos
-	)
-
-	if overflowItems then
-		warn("items have overflowed, adjusting movecount and returning items unable to be moved")
-		moveCount -= overflowItems.Count or 1
-	end
-
-	InventoryUtil.RegisterItem(InventoryClient.InvData, overflowItems, startPos)
-
-	if startPos == InventoryClient.DraggingSlot then
-		-- this is mostly just a check, as for this code to be run, the startPos must have been the one we were dragging but not all of the items were removed, so we need to double check if the DraggingCount matches
-		local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData).Count or 1
-
-		if InventoryClient.DraggingCount ~= stackCount then
-			warn("updated dragging count should be equal to the new stackCount")
-		end
-	elseif endPos == InventoryClient.DraggingSlot then
-		local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData).Count or 1
-
-		if InventoryClient.DraggingCount ~= stackCount then
-			warn("updated dragging count should be equal to the new stackCount")
+		if fullStackDragged then
+			InventoryClient.DraggingCount = stackCount + moveCount
 		end
 	end
+
+	success, result = coroutine.resume(invUtilCoro)
+
+	if success and result[1] == 1 then
+		if result[2] == "No items were moved" then
+			warn("none of the items can be moved, so nothing actually changed")
+			return
+		else
+			error("ERROR: Invalid result message -- ", result[2])
+		end
+	elseif not success then
+		error(result)
+	end
+
+	-- we lowkey don't even need to do the following anymore
+
+	-- if startPos == InventoryClient.DraggingSlot then
+	-- 	-- this is mostly just a check, as for this code to be run, the moveSlot must have been performed on the server and the startPos must have been the one we were dragging but not all of the items were removed, so we need to double check if the DraggingCount matches
+	-- 	local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData).Count or 1
+
+	-- 	if InventoryClient.DraggingCount ~= stackCount then
+	-- 		warn("updated dragging count should be equal to the new stackCount")
+	-- 	end
+	-- elseif endPos == InventoryClient.DraggingSlot then
+	-- 	local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData).Count or 1
+
+	-- 	if InventoryClient.DraggingCount ~= stackCount then
+	-- 		warn("updated dragging count should be equal to the new stackCount")
+	-- 	end
+	-- end
+
+	-- TODO: send this move data to the server
 end
 
 -- Swap Item Slots within the inventory grid
@@ -888,13 +897,7 @@ function InventoryClient.Add(itemsToAdd: Types.StackData?, targetGridPos: Types.
 		return
 	end
 
-	local fullStackDragged -- the way this works is as follows: if you were dragging the entire slot, (aka, DraggingCount == slotInfo.count) then the increase in the number of items in the slot is reflected in the dragging count, otherwise there is no increase in the dragging count and the newly added items will be left undragged
-
-	if InventoryClient.DraggingSlot then
-		local oldDraggingSlotInfo = InventoryUtil.GetSlotInfo(InventoryClient.InvData, InventoryClient.DraggingSlot)
-
-		fullStackDragged = InventoryClient.DraggingCount == (oldDraggingSlotInfo.Count or 1) --tbh the 'or' shouldn't ever be considered since unique items can't stack, but it probably con't matter
-	end
+	local fullStackDragged = IsDraggingFullSlot()
 
 	local overflowItems = InventoryUtil.RegisterItem(InventoryClient.InvData, itemsToAdd, targetGridPos)
 

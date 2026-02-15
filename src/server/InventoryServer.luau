@@ -56,6 +56,7 @@ local InventoryServer: {
 			},
 		},
 	},
+	[string]: (...any) -> ...any,
 } =
 	{}
 
@@ -130,10 +131,18 @@ function InventoryServer.OnPlayerAdded(plr: Player)
 		InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
 		InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
 
-		-- while true do
-		-- 	InventoryServer.Swap(plr, InventoryUtil.GridPosition.new(4, 6), InventoryUtil.GridPosition.new(5, 7))
-		-- 	task.wait(1)
-		-- end
+		while true do
+			InventoryServer.Move(plr, InventoryUtil.GridPosition.new(4, 6), InventoryUtil.GridPosition.new(5, 7), 200)
+			task.wait(1)
+			InventoryServer.Move(plr, InventoryUtil.GridPosition.new(5, 7), InventoryUtil.GridPosition.new(4, 6), 40)
+			task.wait(2)
+			InventoryServer.Move(plr, InventoryUtil.GridPosition.new(5, 7), InventoryUtil.GridPosition.new(4, 6), 40)
+			task.wait(2)
+			InventoryServer.Move(plr, InventoryUtil.GridPosition.new(5, 7), InventoryUtil.GridPosition.new(4, 6), 40)
+			task.wait(2)
+			InventoryServer.Move(plr, InventoryUtil.GridPosition.new(5, 7), InventoryUtil.GridPosition.new(4, 6), 40)
+			task.wait(2)
+		end
 
 		-- task.wait(4)
 
@@ -171,62 +180,41 @@ end
 
 -- Move Item Slots within the inventory grid
 function InventoryServer.Move(plr: Player, startPos: Types.GridPosition, endPos: Types.GridPosition, moveCount: number?)
-	if not InventoryServer.AllInventories[plr] then
-		warn(plr.Name .. "'s inventory does not exist")
-		return
+	local invUtilCoro = coroutine.create(InventoryUtil.MoveSlot)
+
+	local success, result =
+		coroutine.resume(invUtilCoro, InventoryServer.AllInventories[plr], startPos, endPos, moveCount)
+
+	while success and result[1] == 0 and coroutine.status(invUtilCoro) ~= "dead" do
+		print(result[2])
+		success, result = coroutine.resume(invUtilCoro)
 	end
 
-	local stackData = InventoryUtil.GetSlotInfo(InventoryServer.AllInventories[plr], startPos)
-	if not stackData then
-		warn("Slot" .. tostring(startPos) .. " is empty")
-		return
-	end
-	-- print(stackData)
-
-	local stackCount = if typeof(stackData.Item) == "string" then stackData.Count else 1
-
-	moveCount = moveCount or (stackCount or 1)
-
-	-- if the movecount is 0 then we must stop because it will try to to move unique items, as they don't look at count
-	if moveCount <= 0 then
-		return
-	end
-
-	if moveCount > stackCount then
-		warn("there are not enough items for there to move, moving what is there")
-		moveCount = stackCount
-	end
-
-	-- process the register/unregistering
-	local itemsToMove = InventoryUtil.UnregisterItem(
-		InventoryServer.AllInventories[plr],
-		{ Count = if typeof(stackData.Item) == "string" then moveCount else nil, Item = stackData.Item },
-		startPos
-	)
-
-	local overflowItems = InventoryUtil.RegisterItem(
-		InventoryServer.AllInventories[plr], -- we unregister the items from the start slot, try to register them into the end slot
-		itemsToMove,
-		endPos
-	)
-
-	InventoryUtil.RegisterItem(InventoryServer.AllInventories[plr], overflowItems, startPos)
-	-- do some checks to detect if either not all the items could be moved, or if nothing was moved at all
-	if overflowItems then
-		if TableUtil.DeepEqual(overflowItems, itemsToMove) then
-			warn("none of the items can be moved, so nothing actually changed")
+	if success and result[1] == 1 then
+		if result[2] == "InvData not given" then
+			warn(plr.Name .. "'s inventory does not exist")
+			return
+		elseif result[2] == "Slot is empty" then
+			warn("Slot" .. tostring(startPos) .. " is empty")
+			return
+		elseif result[2] == "No items were moved" then
+			warn("Slot" .. tostring(startPos) .. " is empty")
 			return
 		else
-			warn("only some of the items could be moved, adjusting moveCount")
-			moveCount -= overflowItems.Count or 1 -- adjust the moveCount so it reflects the number of items that actually got moved
+			error("ERROR: Invalid result message -- ", result[2])
 		end
+	elseif not success then
+		error(result)
 	end
+
+	print(result[2])
+	-- here result[3] holds the fixed movecount, because I can't really fine any better way to pass that information through
 
 	Signal.FireClient(
 		plr,
 		"InventoryClient:Update",
 		InventoryServer.GetInventoryData(plr),
-		{ Type = "Move", Data = { startPos = startPos, endPos = endPos, moveCount = moveCount } }
+		{ Type = "Move", Data = { startPos = startPos, endPos = endPos, moveCount = result[3] } }
 	)
 end
 

@@ -304,6 +304,66 @@ function InventoryUtil.UnregisterItem(
 	error("Code for this not implemented yet.") -- TODO: Add code to handle this
 end
 
+-- Move item Slots withing the same inventory grid
+function InventoryUtil.MoveSlot(
+	invData: Types.Inventory?,
+	startPos: Types.GridPosition,
+	endPos: Types.GridPosition,
+	moveCount: number?
+)
+	if not invData then
+		return { 1, "InvData not given" }
+	end
+
+	local stackData = InventoryUtil.GetSlotInfo(invData, startPos)
+	if not stackData then
+		return { 1, "Slot is empty" }
+	end
+	-- print(stackData)
+
+	local stackCount = if typeof(stackData.Item) == "string" then stackData.Count else 1
+
+	moveCount = moveCount or (stackCount or 1)
+
+	-- if the movecount is 0 or less then we must stop because it will try to to move unique items, as they don't look at count
+	if moveCount <= 0 then
+		return
+	end
+
+	if moveCount > stackCount then
+		warn("there are not enough items for there to move, moving what is there")
+		moveCount = stackCount
+	end
+
+	coroutine.yield({ 0, "Movecount calculated" })
+
+	-- process the register/unregistering
+	local itemsToMove = InventoryUtil.UnregisterItem(
+		invData,
+		{ Count = if typeof(stackData.Item) == "string" then moveCount else nil, Item = stackData.Item },
+		startPos
+	)
+
+	local overflowItems = InventoryUtil.RegisterItem(
+		invData, -- we unregister the items from the start slot, try to register them into the end slot
+		itemsToMove,
+		endPos
+	)
+
+	InventoryUtil.RegisterItem(invData, overflowItems, startPos)
+
+	if overflowItems then
+		if TableUtil.DeepEqual(overflowItems, itemsToMove) then
+			return { 1, "No items were moved" }
+		else
+			warn("only some of the items could be moved, adjusting moveCount")
+			moveCount -= overflowItems.Count or 1 -- adjust the moveCount so it reflects the number of items that actually got moved
+		end
+	end
+
+	return { 0, "MoveSlot completed", moveCount }
+end
+
 function InventoryUtil.GetSlotInfo(
 	invData: Types.Inventory,
 	slotPos: Types.GridPosition | { x: number, y: number }?
