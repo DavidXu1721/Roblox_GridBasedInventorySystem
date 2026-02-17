@@ -364,6 +364,23 @@ function InventoryUtil.MoveSlot(
 	return { 0, "MoveSlot completed", moveCount }
 end
 
+function InventoryUtil.SwapSlot(invData: Types.Inventory, APos: Types.GridPosition, BPos: Types.GridPosition)
+	if not invData then
+		return { 1, "InvData not given" }
+	end
+
+	local ASlot = InventoryUtil.UnregisterItem(invData, InventoryUtil.GetSlotInfo(invData, APos), APos)
+	local BSlot = InventoryUtil.UnregisterItem(invData, InventoryUtil.GetSlotInfo(invData, BPos), BPos)
+	InventoryUtil.RegisterItem(invData, ASlot, BPos)
+	InventoryUtil.RegisterItem(invData, BSlot, APos)
+
+	if ASlot == nil and BSlot == nil then
+		return { 1, "Nothing happened" }
+	end
+
+	return { 0, "SwapSlot completed" }
+end
+
 function InventoryUtil.GetSlotInfo(
 	invData: Types.Inventory,
 	slotPos: Types.GridPosition | { x: number, y: number }?
