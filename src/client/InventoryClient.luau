@@ -72,16 +72,19 @@ local ArmorInnerFrame = ArmorFrame:WaitForChild("Inner")
 --
 
 local function ProcessInventoryData(invData) -- the fact that i even have to do this is absolutely retarded, why is does k turned into a goddamn string?!!
+	local newGrid = {}
+
+	for i = 1, #invData.Grid do
+		newGrid[i] = {}
+	end
+
 	for i, gridRow in ipairs(invData.Grid) do
 		for key, stackData in pairs(gridRow) do
-			if typeof(key) == "number" then
-				continue
-			end
-
-			gridRow[tonumber(key)] = stackData
-			gridRow[key] = nil
+			newGrid[i][tonumber(key)] = stackData
 		end
 	end
+
+	invData.Grid = newGrid
 end
 
 local function GetSlotFrame(slotPos: Types.GridPosition): TextButton?
@@ -756,7 +759,7 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 			warn("Slot" .. tostring(startPos) .. " is empty")
 			return
 		else
-			error("ERROR: Invalid result message -- ", result[2])
+			error("ERROR: Invalid result message -- " .. result[2])
 		end
 	elseif not success then
 		error(result)
@@ -811,7 +814,7 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 			warn("none of the items can be moved, so nothing actually changed")
 			return
 		else
-			error("ERROR: Invalid result message -- ", result[2])
+			error("ERROR: Invalid result message -- " .. result[2])
 		end
 	elseif not success then
 		error(result)
@@ -872,7 +875,7 @@ end
 
 -- Swap Item Slots within the inventory grid
 function InventoryClient.Swap(APos: Types.GridPosition, BPos: Types.GridPosition)
-	local invUtilCoro = coroutine.create(InventoryUtil.MoveSlot)
+	local invUtilCoro = coroutine.create(InventoryUtil.SwapSlot)
 
 	-- Calculate the movecount
 	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, APos, BPos)
@@ -882,7 +885,7 @@ function InventoryClient.Swap(APos: Types.GridPosition, BPos: Types.GridPosition
 			warn("LocalPlayer's inventory does not exist")
 			return
 		else
-			error("ERROR: Invalid result message -- ", result[2])
+			error("ERROR: Invalid result message -- " .. result[2])
 		end
 	elseif not success then
 		error(result)
@@ -909,11 +912,13 @@ function InventoryClient.Swap(APos: Types.GridPosition, BPos: Types.GridPosition
 			warn("both slots are empty, no nothing happened")
 			return
 		else
-			error("ERROR: Invalid result message -- ", result[2])
+			error("ERROR: Invalid result message -- " .. result[2])
 		end
 	elseif not success then
 		error(result)
 	end
+
+	print(result[2])
 
 	-- update selected slot
 	if APos == InventoryClient.SelectedSlot then
@@ -1069,6 +1074,11 @@ function InventoryClient.HandleUpdate(
 		InventoryClient.SelectGridSlot()
 		InventoryClient.StopDraggingSlot()
 		InventoryClient.InvData = newInvData
+	elseif false then
+		warn("CLIENT:")
+		warn(InventoryClient.InvData)
+		warn("SERVER:")
+		warn(newInvData)
 	end
 
 	--print(InventoryClient.InvData)
@@ -1084,6 +1094,7 @@ function InventoryClient.Start()
 	-- Updating inventory
 	task.spawn(function()
 		InventoryClient.UpdateInventoryData()
+		print(InventoryClient.InvData)
 		InventoryClient.UpdateDisplay()
 		print(InventoryClient.InvData)
 	end)
