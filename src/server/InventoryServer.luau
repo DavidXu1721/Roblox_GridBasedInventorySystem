@@ -56,6 +56,9 @@ local InventoryServer: {
 			},
 		},
 	},
+	Janitors: {
+		[Player]: Janitor,
+	},
 	[string]: (...any) -> ...any,
 } =
 	{}
@@ -114,202 +117,6 @@ function InventoryServer.OnPlayerAdded(plr: Player)
 	end
 
 	print(inv)
-
-	-- Waiting for character to load in the first time
-	if not plr.Character then
-		plr.CharacterAdded:Wait()
-	end
-	InventoryServer.LoadData(plr)
-
-	-- Character Added
-	local function charAdded(char: Model)
-		print(char.Name .. " has spawned")
-
-		-- the following is just a bunch of test code
-
-		-- testing moveing items back and forth, in particular triggering overflow
-		-- task.spawn(function()
-		-- 	InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
-		-- 	InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
-		-- 	InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
-		-- 	InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
-		-- 	InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
-
-		-- 	InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(5, 7))
-		-- 	InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(5, 7))
-		-- 	InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(5, 7))
-		-- 	InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(5, 7))
-
-		-- 	while true do
-		-- 		InventoryServer.Move(
-		-- 			plr,
-		-- 			InventoryUtil.GridPosition.new(4, 6),
-		-- 			InventoryUtil.GridPosition.new(5, 7),
-		-- 			200
-		-- 		)
-		-- 		task.wait(1)
-		-- 		InventoryServer.Move(
-		-- 			plr,
-		-- 			InventoryUtil.GridPosition.new(5, 7),
-		-- 			InventoryUtil.GridPosition.new(4, 6),
-		-- 			40
-		-- 		)
-		-- 		task.wait(0.5)
-		-- 		InventoryServer.Move(
-		-- 			plr,
-		-- 			InventoryUtil.GridPosition.new(5, 7),
-		-- 			InventoryUtil.GridPosition.new(4, 6),
-		-- 			40
-		-- 		)
-		-- 		task.wait(0.5)
-		-- 		InventoryServer.Move(
-		-- 			plr,
-		-- 			InventoryUtil.GridPosition.new(5, 7),
-		-- 			InventoryUtil.GridPosition.new(4, 6),
-		-- 			40
-		-- 		)
-		-- 		task.wait(0.5)
-		-- 		InventoryServer.Move(
-		-- 			plr,
-		-- 			InventoryUtil.GridPosition.new(5, 7),
-		-- 			InventoryUtil.GridPosition.new(4, 6),
-		-- 			40
-		-- 		)
-		-- 		task.wait(0.5)
-		-- 		InventoryServer.Move(
-		-- 			plr,
-		-- 			InventoryUtil.GridPosition.new(5, 7),
-		-- 			InventoryUtil.GridPosition.new(4, 6),
-		-- 			40
-		-- 		)
-		-- 		task.wait(0.5)
-		-- 		InventoryServer.Move(
-		-- 			plr,
-		-- 			InventoryUtil.GridPosition.new(5, 7),
-		-- 			InventoryUtil.GridPosition.new(4, 6),
-		-- 			40
-		-- 		)
-		-- 		task.wait(0.5)
-		-- 		InventoryServer.Move(
-		-- 			plr,
-		-- 			InventoryUtil.GridPosition.new(5, 7),
-		-- 			InventoryUtil.GridPosition.new(4, 6),
-		-- 			40
-		-- 		)
-		-- 		task.wait(0.5)
-		-- 		InventoryServer.Move(
-		-- 			plr,
-		-- 			InventoryUtil.GridPosition.new(5, 7),
-		-- 			InventoryUtil.GridPosition.new(4, 6),
-		-- 			40
-		-- 		)
-		-- 		task.wait(0.5)
-		-- 	end
-		-- end)
-
-		-- testing moveing items back and forth, in particular triggering overflow
-		task.spawn(function()
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(4, 6))
-
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(5, 7))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(5, 7))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(5, 7))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryUtil.GridPosition.new(5, 7))
-
-			while true do
-				InventoryServer.Move(
-					plr,
-					InventoryUtil.GridPosition.new(4, 6),
-					InventoryUtil.GridPosition.new(5, 7),
-					200
-				)
-				task.wait(1)
-				InventoryServer.Move(
-					plr,
-					InventoryUtil.GridPosition.new(5, 7),
-					InventoryUtil.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryUtil.GridPosition.new(5, 7),
-					InventoryUtil.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryUtil.GridPosition.new(5, 7),
-					InventoryUtil.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryUtil.GridPosition.new(5, 7),
-					InventoryUtil.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryUtil.GridPosition.new(5, 7),
-					InventoryUtil.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryUtil.GridPosition.new(5, 7),
-					InventoryUtil.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryUtil.GridPosition.new(5, 7),
-					InventoryUtil.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryUtil.GridPosition.new(5, 7),
-					InventoryUtil.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-			end
-		end)
-
-		-- task.wait(4)
-
-		-- while true do
-		-- 	if InventoryServer.Add(plr, { Item = "Coin", Count = 30 }) then
-		-- 		break
-		-- 	end
-		-- 	task.wait(1)
-		-- end
-
-		-- task.wait(4)
-
-		-- while true do
-		-- 	InventoryServer.Remove(plr, { Item = "Coin", Count = 10 })
-
-		-- 	task.wait(0.5)
-		-- end
-	end
-
-	-- Connecting character added
-	task.spawn(charAdded, plr.Character)
-	-- whenever a player leaves the game, the Player object isn't fully destroyed, thus connected events must be disconnected to avoid a memory leak
-	janitor:GiveChore(plr.CharacterAdded:Connect(charAdded))
-	-- TODO: add code to disconnect the this when the player leaves
 end
 
 -- Player Removing
@@ -344,7 +151,7 @@ function InventoryServer.Move(plr: Player, startPos: Types.GridPosition, endPos:
 			warn("None of the items can be moved, so nothing actually changed")
 			return
 		else
-			error("ERROR: Invalid result message -- ", result[2])
+			error("ERROR: Invalid result message -- " .. result[2])
 		end
 	elseif not success then
 		error(result)
@@ -380,31 +187,13 @@ function InventoryServer.Swap(plr: Player, APos: Types.GridPosition, BPos: Types
 			warn("both slots are empty, no nothing happened")
 			return
 		else
-			error("ERROR: Invalid result message -- ", result[2])
+			error("ERROR: Invalid result message -- " .. result[2])
 		end
 	elseif not success then
 		error(result)
 	end
 
 	print(result[2])
-
-	-- local ASlot = InventoryUtil.UnregisterItem(
-	-- 	InventoryServer.AllInventories[plr],
-	-- 	InventoryUtil.GetSlotInfo(InventoryServer.AllInventories[plr], APos),
-	-- 	APos
-	-- )
-	-- local BSlot = InventoryUtil.UnregisterItem(
-	-- 	InventoryServer.AllInventories[plr],
-	-- 	InventoryUtil.GetSlotInfo(InventoryServer.AllInventories[plr], BPos),
-	-- 	BPos
-	-- )
-	-- InventoryUtil.RegisterItem(InventoryServer.AllInventories[plr], ASlot, BPos)
-	-- InventoryUtil.RegisterItem(InventoryServer.AllInventories[plr], BSlot, APos)
-
-	-- if ASlot == nil and BSlot == nil then
-	-- 	warn("both slots are empty, no nothing happened")
-	-- 	return
-	-- end
 
 	Signal.FireClient(
 		plr,
