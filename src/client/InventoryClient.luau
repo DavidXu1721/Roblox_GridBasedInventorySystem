@@ -32,6 +32,9 @@ local ItemConfigData = require(RS.Data.ItemConfigs)
 --
 local InventoryClient = {}
 
+-- Constants
+local MISSING_ICON_IMAGE = "rbxassetid://13405712112"
+
 -- Player variables
 local plr = Players.LocalPlayer
 local plrGui = plr.PlayerGui
@@ -107,11 +110,11 @@ local function UpdateItemImage(targetImage: ImageLabel, item: string | Types.Uni
 
 	-- check if the item is a generic or a unique item
 	if typeof(item) == "string" then
-		targetImage.Image = ItemConfigData[item].IconId or "" -- TODO: add placeholder item image for then there is no icon
+		targetImage.Image = ItemConfigData[item].IconId or MISSING_ICON_IMAGE
 		countLabel.Text = `x{count or 0}`
 		countLabel.Visible = true
 	elseif typeof(item) == "table" then
-		targetImage.Image = ItemConfigData[item.Id].IconId or ""
+		targetImage.Image = ItemConfigData[item.Id].IconId or MISSING_ICON_IMAGE
 		countLabel.Visible = false
 	end
 end
@@ -415,14 +418,33 @@ function InventoryClient.StartDraggingSlot(targetSlotPos: Types.GridPosition?, d
 		error("can't have the specified drag count be more than the stack count")
 	end
 
-	InventoryClient.DraggingCount = dragCount or SlotInfo.Count or 1 -- TODO: allow custom dragcounts, necessary for dealing with swapping slots that you are dragging.
+	InventoryClient.DraggingCount = dragCount or SlotInfo.Count or 1
+
+	CAS:BindAction( -- this enables the drag count incrementation when you start holding CapsLock, since CapsLock disables the inventory being scrollable
+		"ToggleDraggingCountIncrement",
+		function(actionName, inputState, inputObject)
+			if inputState == Enum.UserInputState.Begin then
+				GridScrollingFrame.ScrollingEnabled = false
+			elseif inputState == Enum.UserInputState.End then
+				GridScrollingFrame.ScrollingEnabled = true
+			end
+
+			return Enum.ContextActionResult.Sink
+		end,
+		false,
+		Enum.KeyCode.CapsLock
+	)
+
+	if UIS:IsKeyDown(Enum.KeyCode.CapsLock) then -- do check if we were already holding CapsLock prior to dragging the item
+		GridScrollingFrame.ScrollingEnabled = false
+	end
 
 	CAS:BindAction("AdjustDraggingCount", function(actionName, inputState, inputObject)
+		-- normally using the scroll wheel to adjust the dragging count while the cursor is inside the GridScrollingFrame frame will cause the grid to scroll instead, but if the cursor was on the outside, the dragging count will change as normal, checking whether the grid is scrollable first will make it consistent regardless of cursor location and make holding CapsLock REQUIRED to adjust dragging count.
 		if GridScrollingFrame.ScrollingEnabled then
 			return Enum.ContextActionResult.Pass
-		end -- basically, even if the cursor is outisde of the inventory you still can't increment dragging count
+		end
 
-		print("adfj,he")
 		if inputState == Enum.UserInputState.Change then
 			if inputObject.UserInputType == Enum.UserInputType.MouseWheel then
 				print("Scrolled!", inputObject.Position.Z)
@@ -470,25 +492,6 @@ function InventoryClient.StartDraggingSlot(targetSlotPos: Types.GridPosition?, d
 		false,
 		Enum.KeyCode.LeftControl
 	)
-
-	CAS:BindAction( -- this enables the drag count incrementation when you start holding the space bar, due to the inventory being scrollable and all that
-		"ToggleDraggingCountIncrement",
-		function(actionName, inputState, inputObject)
-			if inputState == Enum.UserInputState.Begin then
-				GridScrollingFrame.ScrollingEnabled = false
-			elseif inputState == Enum.UserInputState.End then
-				GridScrollingFrame.ScrollingEnabled = true
-			end
-
-			return Enum.ContextActionResult.Sink -- "consume" the input
-		end,
-		false,
-		Enum.KeyCode.Space
-	)
-
-	if UIS:IsKeyDown(Enum.KeyCode.Space) then
-		GridScrollingFrame.ScrollingEnabled = false
-	end
 
 	InventoryClient.DraggingJanitor:GiveChore(DropButton.MouseButton1Up:Connect(function()
 		-- If the player lets go of the item on the drop button, they drop the item
@@ -666,56 +669,58 @@ function InventoryClient.UpdateDisplay()
 
 			InventoryClient.GridJanitor:GiveChore( -- TODO: maybe I should put this in the start dragging slot function
 				currentItemSlot.MouseButton1Up:Connect(function()
+					if not InventoryClient.DraggingSlot then
+						return
+					end
+
+					local prevDraggingSlot = InventoryClient.DraggingSlot
+
+					if currentGridPos == prevDraggingSlot then
+						InventoryClient.StopDraggingSlot()
+						return
+					end -- if we "dragged" the dragging slot to the same slot, just ignore it
+
+					print("Dragged Slot" .. tostring(prevDraggingSlot) .. " to Slot " .. tostring(currentGridPos))
+
+					-- in the effort to not trigger any overflow items. Checks to adjust the movecount will be made in advance, and not in the Move function, (it's a warning for a reason, because it should not happen)
+					local moveCount = 0
+					local dragSlotInfo = InventoryUtil.GetSlotInfo(InventoryClient.InvData, prevDraggingSlot)
+					local dragCount = InventoryClient.DraggingCount
+					local maxStackCount = nil
+
+					if slotInfo == nil then
+						-- we can move all of the dragged items into the empty slot, but we might as well double check to see if the drag count we have isn't somehow more than the max stackCount of the item type
+						maxStackCount = if typeof(dragSlotInfo.Item) == "table"
+							then 1
+							else InventoryUtil.MaxStackData[ItemConfigData[dragSlotInfo.Item].ItemType]
+						assert(maxStackCount ~= nil and maxStackCount ~= 0)
+
+						if maxStackCount < dragCount then
+							warn("the dragging count shouldn't be larger than the max stack count")
+							moveCount = maxStackCount
+						else
+							moveCount = dragCount
+						end
+					elseif typeof(dragSlotInfo.Item) == "string" and dragSlotInfo.Item == slotInfo.Item then
+						--if the dragged item is a generic item and is of the same Id as the slotItem it was dragged to
+						assert(typeof(slotInfo.Item) == "string")
+
+						maxStackCount = InventoryUtil.MaxStackData[ItemConfigData[slotInfo.Item].ItemType]
+
+						moveCount = math.min(maxStackCount - slotInfo.Count, dragCount)
+					end
+
+					InventoryClient.Move(prevDraggingSlot, currentGridPos, moveCount)
+
+					-- if we end up moving all the items we were dragging, we might as well just select the slot we moved the items into
+					if moveCount == dragCount then
+						InventoryClient.SelectGridSlot(currentGridPos)
+					end
+
+					InventoryClient.UpdateDisplay()
+
 					if InventoryClient.DraggingSlot then
-						local prevDraggingSlot = InventoryClient.DraggingSlot
-
-						if currentGridPos == prevDraggingSlot then
-							InventoryClient.StopDraggingSlot()
-							return
-						end -- if we "dragged" the dragging slot to the same slot, just ignore it
-
-						print("Dragged Slot" .. tostring(prevDraggingSlot) .. " to Slot " .. tostring(currentGridPos))
-
-						-- in the effort to not trigger any overflow items. Checks to adjust the movecount will be made in advance, and not in the Move function, (it's a warning for a reason, because it should not happen)
-						local moveCount = 0
-						local dragSlotInfo = InventoryUtil.GetSlotInfo(InventoryClient.InvData, prevDraggingSlot)
-						local dragCount = InventoryClient.DraggingCount
-						local maxStackCount = nil
-
-						if slotInfo == nil then
-							-- we can move all of the dragged items into the empty slot, but we might as well double check to see if the drag count we have isn't somehow more than the max stackCount of the item type
-							maxStackCount = if typeof(dragSlotInfo.Item) == "table"
-								then 1
-								else InventoryUtil.MaxStackData[ItemConfigData[dragSlotInfo.Item].ItemType]
-							assert(maxStackCount ~= nil and maxStackCount ~= 0)
-
-							if maxStackCount < dragCount then
-								warn("the dragging count shouldn't be larger than the max stack count")
-								moveCount = maxStackCount
-							else
-								moveCount = dragCount
-							end
-						elseif typeof(dragSlotInfo.Item) == "string" and dragSlotInfo.Item == slotInfo.Item then
-							--if the dragged item is a generic item and is of the same Id as the slotItem it was dragged to
-							assert(typeof(slotInfo.Item) == "string")
-
-							maxStackCount = InventoryUtil.MaxStackData[ItemConfigData[slotInfo.Item].ItemType]
-
-							moveCount = math.min(maxStackCount - slotInfo.Count, dragCount)
-						end
-
-						InventoryClient.Move(prevDraggingSlot, currentGridPos, moveCount)
-
-						-- if we end up moving all the items we were dragging, we might as well just select the slot we moved the items into
-						if moveCount == dragCount then
-							InventoryClient.SelectGridSlot(currentGridPos)
-						end
-
-						InventoryClient.UpdateDisplay()
-
-						if InventoryClient.DraggingSlot then
-							InventoryClient.StopDraggingSlot()
-						end
+						InventoryClient.StopDraggingSlot()
 					end
 				end)
 			)
@@ -769,44 +774,6 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 
 	local fullStackDragged = IsDraggingFullSlot()
 
-	-- ngl, updating the dragging items before actually moving the items was more complicated than necessary, so I moved it after, (with adjustments)
-	--[[ if startPos == InventoryClient.DraggingSlot then
-	-- 	-- TECHNICALLY speaking this only works because draggingSlot should always be the selected slot, just be cautious i guess?
-	-- 	local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData).Count or 1
-
-	-- 	if moveCount == stackCount then
-	-- 		-- all the items in the stack have been moved, so we must deselect and stop dragging as the slot is (going to be) empty
-	-- 		InventoryClient.StopDraggingSlot()
-	-- 		InventoryClient.SelectGridSlot()
-	-- 	elseif moveCount > stackCount then
-	-- 		-- a quick check I guess
-	-- 		warn("movecount should not be greater than the items already in the stack")
-	-- 		InventoryClient.StopDraggingSlot()
-	-- 		InventoryClient.SelectGridSlot()
-	-- 	else -- not all the items in the stack were moved, there are still some left, so we have to update the draggingCount
-	-- 		InventoryClient.DraggingCount = math.min(InventoryClient.DraggingCount, stackCount - moveCount)
-	-- 	end
-	-- 	-- if the startPos is instead just the selectedSlot then just update the selected slot
-	-- elseif startPos == InventoryClient.SelectedSlot then
-	-- 	local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData).Count or 1
-
-	-- 	if moveCount == stackCount then
-	-- 		-- all the items in the stack have been moved, so we must deselect and stop dragging as the slot is (going to be) empty
-
-	-- 		InventoryClient.SelectGridSlot()
-	-- 	elseif moveCount > stackCount then
-	-- 		-- a quick check I guess
-	-- 		warn("movecount should not be greater than the items already in the stack")
-	-- 		InventoryClient.SelectGridSlot()
-	-- 	end
-	-- elseif endPos == InventoryClient.DraggingSlot then
-	-- 	local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, endPos) :: Types.StackData).Count or 1
-	-- 	if fullStackDragged then
-	-- 		InventoryClient.DraggingCount = stackCount + moveCount
-	-- 	end
-	end ]]
-	--
-
 	success, result = coroutine.resume(invUtilCoro)
 
 	if success and result[1] == 1 then
@@ -823,7 +790,6 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 	print(result[2])
 
 	-- update the dragging slot
-	-- TODO: move the draggingSlot check inside of the selectedSlot check
 	if startPos == InventoryClient.DraggingSlot then
 		-- TECHNICALLY speaking this only works because draggingSlot should always be the selected slot, just be cautious i guess?
 		local stackData = InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData?
@@ -853,22 +819,26 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 		end
 	end
 
-	-- we lowkey don't even need to do the following anymore
+	--[[
+	we lowkey don't even need to do the following anymore
 
-	-- if startPos == InventoryClient.DraggingSlot then
-	-- 	-- this is mostly just a check, as for this code to be run, the moveSlot must have been performed on the server and the startPos must have been the one we were dragging but not all of the items were removed, so we need to double check if the DraggingCount matches
-	-- 	local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData).Count or 1
+	this is mostly just a debug check, as for this code to be run, the moveSlot must have been performed on the server WHILE the client was draggin the startPos slot, but NOT ALL of the items were removed, so we need to double check if the DraggingCount matches
 
-	-- 	if InventoryClient.DraggingCount ~= stackCount then
-	-- 		warn("updated dragging count should be equal to the new stackCount")
-	-- 	end
-	-- elseif endPos == InventoryClient.DraggingSlot then
-	-- 	local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData).Count or 1
+	if startPos == InventoryClient.DraggingSlot then
+		
+		local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData).Count or 1
 
-	-- 	if InventoryClient.DraggingCount ~= stackCount then
-	-- 		warn("updated dragging count should be equal to the new stackCount")
-	-- 	end
-	-- end
+		if InventoryClient.DraggingCount ~= stackCount then
+			warn("updated dragging count should be equal to the new stackCount")
+		end
+	elseif endPos == InventoryClient.DraggingSlot then
+		local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData).Count or 1
+
+		if InventoryClient.DraggingCount ~= stackCount then
+			warn("updated dragging count should be equal to the new stackCount")
+		end
+	end
+	]]
 
 	-- TODO: send this move data to the server
 end
@@ -935,6 +905,28 @@ end
 
 -- Add item/s to the player's inventory
 function InventoryClient.Add(itemsToAdd: Types.StackData?, targetGridPos: Types.GridPosition?)
+	local invUtilCoro = coroutine.create(InventoryUtil.AddItem)
+
+	-- Calculate the movecount
+	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, itemsToAdd)
+
+	if success and result[1] == 1 then
+		if result[2] == "InvData not given" then
+			warn("LocalPlayer's inventory does not exist")
+			return
+		elseif result[2] == "No items to add" then
+			warn("Items to add parameter was no present")
+			return
+		else
+			error("ERROR: Invalid result message -- " .. result[2])
+		end
+	elseif not success then
+		error(result)
+	end
+
+	warn(result[2])
+
+	--[[ OLD CODE
 	if not InventoryClient.InvData then
 		warn(plr.Name .. "'s inventory does not exist")
 		return
@@ -968,6 +960,7 @@ function InventoryClient.Add(itemsToAdd: Types.StackData?, targetGridPos: Types.
 	end
 
 	return overflowItems
+	]]
 end
 
 -- Remove item/s from the player's inventory
@@ -1113,7 +1106,7 @@ function InventoryClient.Start()
 
 	-- Input Bind
 	task.spawn(
-		function() -- This disables the i and o keys for zooming in and out, so that we can use it for the inventroy toggle
+		function() -- This disables the i and o keys for zooming in and out, so that we can use it for the inventory toggle
 			for _ = 1, 2 do
 				while true do
 					local info = CAS:GetBoundActionInfo("RbxCameraKeypress")
@@ -1144,88 +1137,85 @@ function InventoryClient.Start()
 	end)
 
 	-- Move the Inventory back and forth based on whether it's open or closed
-	task.spawn(function()
-		RunService:BindToRenderStep(
-			"update UI",
-			2000,
-			function(delta) -- RenderStepped/PreRender happens after the UI rendering for some reason, so I'm using BindToRenderStep, apparently priority 2000 still happens before the UI renders
-				if InventoryClient.IsOpen then
-					InventoryClient.OpenCloseTimePosition =
-						math.min(InventoryClient.OpenCloseTimePeriod, InventoryClient.OpenCloseTimePosition + delta)
-				else
-					InventoryClient.OpenCloseTimePosition =
-						math.max(0.001, InventoryClient.OpenCloseTimePosition - delta) -- not zero as that would cause issues with the math.ceil below, as it would make 100* InventoryClient.OpenCloseTimePosition/InventoryClient.OpenCloseTimePeriod = 0 which is not the first element in the array
+	RunService:BindToRenderStep(
+		"update UI",
+		2000,
+		function(delta) -- RenderStepped/PreRender happens after the UI rendering for some reason, so I'm using BindToRenderStep, apparently priority 2000 still happens before the UI renders
+			if InventoryClient.IsOpen then
+				InventoryClient.OpenCloseTimePosition =
+					math.min(InventoryClient.OpenCloseTimePeriod, InventoryClient.OpenCloseTimePosition + delta)
+			else
+				InventoryClient.OpenCloseTimePosition = math.max(0.001, InventoryClient.OpenCloseTimePosition - delta) -- not zero as that would cause issues with the math.ceil below, as it would make 100* InventoryClient.OpenCloseTimePosition/InventoryClient.OpenCloseTimePeriod = 0 which is not the first element in the array
+			end
+
+			-- the following pair of if statements feels kind of fucked but it should be fine
+			if InventoryClient.OpenCloseTimePosition == 0.001 then
+				-- when the inventory is fully closed, make the inventoryFrame invisible
+				InventoryFrame.Visible = false
+			else
+				InventoryFrame.Visible = true
+			end
+
+			if InventoryClient.OpenCloseTimePosition == InventoryClient.OpenCloseTimePeriod then
+				-- when the inventory is fully open, make the hotbar frame invisible
+				HotbarFrame.Visible = false
+				-- and the instructions visible
+				InstructionTxtBox.Visible = true
+				-- and only when the inventory is fully open will we make the inventory interactable
+				if not InventoryFrame.Interactable then
+					InventoryFrame.Interactable = true
 				end
+			else
+				HotbarFrame.Visible = true
 
-				-- the following pair of if statements feels kind of fucked but it should be fine
-				if InventoryClient.OpenCloseTimePosition == 0.001 then
-					-- when the inventory is fully closed, make the inventoryFrame invisible
-					InventoryFrame.Visible = false
-				else
-					InventoryFrame.Visible = true
-				end
+				InstructionTxtBox.Visible = false
 
-				if InventoryClient.OpenCloseTimePosition == InventoryClient.OpenCloseTimePeriod then
-					-- when the inventory is fully open, make the hotbar frame invisible
-					HotbarFrame.Visible = false
-					-- and the instructions visible
-					InstructionTxtBox.Visible = true
-					-- and only when the inventory is fully open will we make the inventory interactable
-					if not InventoryFrame.Interactable then
-						InventoryFrame.Interactable = true
-					end
-				else
-					HotbarFrame.Visible = true
-
-					InstructionTxtBox.Visible = false
-
-					if InventoryFrame.Interactable then
-						InventoryFrame.Interactable = false
-					end
-				end
-
-				InventoryFrame.Position = UDim2.fromScale(
-					InventoryFrame.Position.X.Scale,
-					InventoryClient.YScaleEasingArray.Inventory[math.ceil(
-						100 * InventoryClient.OpenCloseTimePosition / InventoryClient.OpenCloseTimePeriod
-					)]
-				)
-				HotbarFrame.Position = UDim2.fromScale(
-					HotbarFrame.Position.X.Scale,
-					InventoryClient.YScaleEasingArray.Hotbar[math.ceil(
-						100 * InventoryClient.OpenCloseTimePosition / InventoryClient.OpenCloseTimePeriod
-					)]
-				)
-
-				-- Handle the dragging of items
-
-				if InventoryClient.DraggingSlot then
-					local DraggingSlotFrame: TextButton? = GetSlotFrame(InventoryClient.DraggingSlot)
-
-					local DraggingImage: ImageLabel = DraggingOverlay:WaitForChild("DragImage")
-
-					if not DraggingSlotFrame then
-						error(
-							"Error: SlotFrame for Slot"
-								.. tostring(InventoryClient.DraggingSlot)
-								.. " does not exist to be dragged"
-						)
-					end
-
-					if DraggingImage then -- The SlotFrame still has the image so parent DraggingImage to the DraggingOverlay if it was not already done
-						local itemSampleImage = ItemSample:WaitForChild("Image") :: ImageLabel
-
-						DraggingImage.Size =
-							UDim2.fromOffset(itemSampleImage.AbsoluteSize.X * 1.3, itemSampleImage.AbsoluteSize.Y * 1.3)
-						DraggingImage.Position =
-							UDim2.fromOffset(InventoryClient.MousePosition.X, InventoryClient.MousePosition.Y)
-					else -- The slotFrame's image should be in the draggingOverlay
-						error("Item image should be in the dragging overlay")
-					end
+				if InventoryFrame.Interactable then
+					InventoryFrame.Interactable = false
 				end
 			end
-		)
-	end)
+
+			InventoryFrame.Position = UDim2.fromScale(
+				InventoryFrame.Position.X.Scale,
+				InventoryClient.YScaleEasingArray.Inventory[math.ceil(
+					100 * InventoryClient.OpenCloseTimePosition / InventoryClient.OpenCloseTimePeriod
+				)]
+			)
+			HotbarFrame.Position = UDim2.fromScale(
+				HotbarFrame.Position.X.Scale,
+				InventoryClient.YScaleEasingArray.Hotbar[math.ceil(
+					100 * InventoryClient.OpenCloseTimePosition / InventoryClient.OpenCloseTimePeriod
+				)]
+			)
+
+			-- Update position of the dragging image
+
+			if InventoryClient.DraggingSlot then
+				local DraggingSlotFrame: TextButton? = GetSlotFrame(InventoryClient.DraggingSlot)
+
+				local DraggingImage: ImageLabel = DraggingOverlay:WaitForChild("DragImage")
+
+				if not DraggingSlotFrame then
+					error(
+						"Error: SlotFrame for Slot"
+							.. tostring(InventoryClient.DraggingSlot)
+							.. " does not exist to be dragged"
+					)
+				end
+
+				if DraggingImage then -- The dragging image would have already been set to the dragged item's in the StartDraggingSlot function
+					local itemSampleImage = ItemSample:WaitForChild("Image") :: ImageLabel
+
+					DraggingImage.Size =
+						UDim2.fromOffset(itemSampleImage.AbsoluteSize.X * 1.3, itemSampleImage.AbsoluteSize.Y * 1.3)
+					DraggingImage.Position =
+						UDim2.fromOffset(InventoryClient.MousePosition.X, InventoryClient.MousePosition.Y)
+				else -- The slotFrame's image should be in the draggingOverlay
+					error("Item image should be in the dragging overlay")
+				end
+			end
+		end
+	)
 end
 
 --Returning
