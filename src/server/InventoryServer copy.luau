@@ -183,7 +183,7 @@ function InventoryServer.OnPlayerRemoving(plr: Player)
 end
 
 -- Committing Versions
--- after a considerable amount of brainstorming I have come to the following model. Whenever a version is committed, the inventory data is set, aka, we will add changes to a "change stack", then we do this function (call it "ApplyChanges" or something) and have the inventory data update from there, whenever we change something on the backlog (still use the SAME function), we "rewind" the changes until we hit the updated backlog, then go back through to the present, some changes are not reversable such as remove and maybe add (if it suddenly became not possible due to emplty slots being filled, such as via a stack of items being split up (probably keep deep (at least to stack level) copies for those instances)
+-- after a considerable amount of brainstorming I have come to the following model. Whenever a version is committed, the inventory data is set, aka, we will add changes to a "change stack", then we do this function (call it "ApplyChanges" or something) and have the inventory data update from there, whenever we change something on the backlog (still use the SAME function), we "rewind" the changes until we hit the updated backlog, then go back through to the present, some changes are not reversable such as remove and maybe add (if it suddenly became not possible due to empty slots being filled, such as via a stack of items being split up (probably keep deep (at least to stack level) copies for those instances)
 function InventoryServer.CommitVersion(
 	plr: Player,
 	newInvData: Types.Inventory,
