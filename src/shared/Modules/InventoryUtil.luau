@@ -29,12 +29,12 @@ local ItemConfigData = require(RS.Data.ItemConfigs)
 
 local InventoryUtil = {}
 
---// GridPosition object
+-- GridPosition object
 local GridPosition = {}
 GridPosition.__index = GridPosition
 
 function GridPosition.new(x: number, y: number): Types.GridPosition
-	assert(x and y)
+	assert(typeof(x) == "number" and typeof(y) == "number")
 
 	return setmetatable({
 		x = x,
@@ -183,6 +183,11 @@ function InventoryUtil.UnregisterItem(
 	itemToUnregister: Types.StackData | { Item: string, Count: nil }?,
 	targetGridPos: Types.GridPosition?
 ): Types.StackData?
+	local function ItemsNotFound(targetItem)
+		warn("Can't find all items to unregister!")
+		warn(targetItem)
+		error("Code for this not implemented yet.") -- TODO: Add code to handle this
+	end
 	-- IMPORTANT: In order for some of the code in inventory server to work, itemToUnregister can't be mutated
 	if not invData then
 		error("ERROR: invData not present!")
@@ -261,8 +266,7 @@ function InventoryUtil.UnregisterItem(
 				-- check if the stack is empty, and if so remove it
 				assert(
 					gridRow[j].Count >= 0,
-					"itemCount at" .. InventoryUtil.GRID_DIMENSIONS.y - i + 1,
-					j .. "somehow became negative"
+					"itemCount at" .. InventoryUtil.GRID_DIMENSIONS.y - i + 1 .. "," .. j .. "somehow became negative"
 				)
 				if gridRow[j].Count == 0 then
 					gridRow[j] = nil
@@ -292,16 +296,13 @@ function InventoryUtil.UnregisterItem(
 
 			if targetGridPos and targetGridPos == currentGridPos then
 				--TODO: Add more code to handle this case and fix the repetition
-				warn("Can't find all items to unregister!")
-				warn(_targetItem)
-				error("Code for this not implemented yet.") -- TODO: Add code to handle this
+				ItemsNotFound(_targetItem)
 			end
 		end
 	end
 
-	warn("Can't find all items to unregister!")
-	warn(_targetItem)
-	error("Code for this not implemented yet.") -- TODO: Add code to handle this
+	ItemsNotFound(_targetItem)
+	return
 end
 
 -- Move item Slots withing the same inventory grid
@@ -321,6 +322,7 @@ function InventoryUtil.MoveSlot(
 	end
 	-- print(stackData)
 
+	-- Calculate the movecount
 	local stackCount = if typeof(stackData.Item) == "string" then stackData.Count else 1
 
 	moveCount = moveCount or (stackCount or 1)
@@ -369,6 +371,8 @@ function InventoryUtil.SwapSlot(invData: Types.Inventory, APos: Types.GridPositi
 		return { 1, "InvData not given" }
 	end
 
+	coroutine.yield({ 0, "Inventory check passed" })
+
 	local ASlot = InventoryUtil.UnregisterItem(invData, InventoryUtil.GetSlotInfo(invData, APos), APos)
 	local BSlot = InventoryUtil.UnregisterItem(invData, InventoryUtil.GetSlotInfo(invData, BPos), BPos)
 	InventoryUtil.RegisterItem(invData, ASlot, BPos)
@@ -379,6 +383,60 @@ function InventoryUtil.SwapSlot(invData: Types.Inventory, APos: Types.GridPositi
 	end
 
 	return { 0, "SwapSlot completed" }
+end
+
+--TODO: make the returns of these coroutines not just arrays and tables with actual keys, for better readability
+function InventoryUtil.AddItem(
+	invData: Types.Inventory,
+	itemsToAdd: Types.StackData?,
+	targetGridPos: Types.GridPosition?
+)
+	if not invData then
+		return { 1, "InvData not given" }
+	end
+
+	if not itemsToAdd then
+		return { 1, "No items to add" }
+	end
+
+	coroutine.yield({ 0, "Preliminary check passed" })
+
+	local overflowItems = InventoryUtil.RegisterItem(invData, itemsToAdd, targetGridPos)
+
+	if overflowItems then
+		if TableUtil.DeepEqual(overflowItems, itemsToAdd) then
+			return { 1, "No items were added", overflowItems }
+		else
+			if typeof(overflowItems.Item) == "table" then
+				error("if there are overflowItems that don't match the itemsToAdd then they can't be a unique item")
+			end
+			-- we are confident that we are dealing with a generic item
+			itemsToAdd.Count -= overflowItems.Count
+		end
+	end
+
+	return { 0, "AddItems Completed", overflowItems, itemsToAdd }
+end
+
+function InventoryUtil.RemoveItem(
+	invData: Types.Inventory,
+	itemsToRemove: Types.StackData?,
+	targetGridPos: Types.GridPosition?
+)
+	if not invData then
+		return { 1, "InvData not given" }
+	end
+
+	if not itemsToRemove then
+		return { 1, "No items to remove" }
+	end
+
+	coroutine.yield({ 0, "Preliminary check passed" })
+
+	-- NOTE: here we actually need to make sure that the inventory that we are removing from actually has the the items. This will ERROR if there are not enough items present
+	local removedItems = InventoryUtil.UnregisterItem(invData, itemsToRemove, targetGridPos)
+
+	return { 0, "RemoveItems Completed", removedItems }
 end
 
 function InventoryUtil.GetSlotInfo(
