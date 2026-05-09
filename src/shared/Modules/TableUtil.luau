@@ -862,7 +862,7 @@ end
 	compares key/value pairs directly, not by iteration order.
 	:::
 ]=]
-local function DeepEqual<K, V>(a: { [K]: V }, b: { [K]: V }): boolean
+local function DeepEqual(a: any, b: any): boolean
 	if a == b then
 		return true
 	end

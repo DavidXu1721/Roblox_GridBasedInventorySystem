@@ -2,6 +2,7 @@
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UIS = game:GetService("UserInputService")
 local StarterGui = game:GetService("StarterGui")
 local RunService = game:GetService("RunService")
@@ -17,6 +18,7 @@ local RSModules = RS.Modules
 --
 
 -- Requiring Inventory Module
+local TableUtil = require(ReplicatedStorage.Modules.TableUtil)
 local InventoryServer = require(script.InventoryServer)
 
 -- Starting Inventory Module
@@ -24,245 +26,29 @@ InventoryServer.Start()
 
 --TODO: write some ACTUAL tests with automatic validation.
 
-function PlayerAdded(plr: Player)
+local function PlayerAdded(plr: Player)
 	-- Character Added
 	local function charAdded(char: Model)
-		warn(char.Name .. " has spawned")
-		--[[
-		-- the following is just a bunch of test code
+		warn("Initiating income")
 
-		-- testing moveing items back and forth, in particular triggering overflow
-		task.spawn(function()
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(4, 6))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(4, 6))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(4, 6))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(4, 6))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(4, 6))
+		local hum: Humanoid = char:WaitForChild("Humanoid") :: Humanoid
+		local isAlive = true
 
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(5, 7))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(5, 7))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(5, 7))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(5, 7))
-
-			while true do
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(4, 6),
-					InventoryServer.GridPosition.new(5, 7),
-					200
-				)
-				task.wait(1)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-			end
-		end)
-        ]]
-		task.wait(1)
-
-		-- testing moveing items back and forth, in particular triggering overflow
-		task.spawn(function()
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(4, 6))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(4, 6))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(4, 6))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(4, 6))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(4, 6))
-
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(5, 7))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(5, 7))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(5, 7))
-			InventoryServer.Add(plr, { Item = "Coin", Count = 30 }, InventoryServer.GridPosition.new(5, 7))
-
-			while true do
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(4, 6),
-					InventoryServer.GridPosition.new(5, 7),
-					200
-				)
-				task.wait(1)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-				InventoryServer.Move(
-					plr,
-					InventoryServer.GridPosition.new(5, 7),
-					InventoryServer.GridPosition.new(4, 6),
-					40
-				)
-				task.wait(0.5)
-			end
+		hum.Died:Once(function()
+			isAlive = false
+			warn("Halting income")
 		end)
 
-		-- testing moveing items back and forth, in particular triggering overflow
-		task.spawn(function()
-			InventoryServer.Add(plr, { Item = "Rock", Count = 6 }, InventoryServer.GridPosition.new(9, 6))
-			InventoryServer.Add(plr, { Item = "Health Potion", Count = 5 }, InventoryServer.GridPosition.new(9, 7))
-
-			while true do
-				InventoryServer.Swap(
-					plr,
-					InventoryServer.GridPosition.new(9, 6),
-					InventoryServer.GridPosition.new(10, 6)
-				)
-				task.wait(0.3)
-				InventoryServer.Swap(
-					plr,
-					InventoryServer.GridPosition.new(10, 6),
-					InventoryServer.GridPosition.new(9, 7)
-				)
-				task.wait(0.3)
-				InventoryServer.Swap(
-					plr,
-					InventoryServer.GridPosition.new(9, 6),
-					InventoryServer.GridPosition.new(9, 7)
-				)
-				task.wait(0.3)
-				InventoryServer.Swap(
-					plr,
-					InventoryServer.GridPosition.new(9, 7),
-					InventoryServer.GridPosition.new(10, 6)
-				)
-				task.wait(0.3)
-				InventoryServer.Swap(
-					plr,
-					InventoryServer.GridPosition.new(9, 6),
-					InventoryServer.GridPosition.new(10, 6)
-				)
-				task.wait(0.3)
-				InventoryServer.Swap(
-					plr,
-					InventoryServer.GridPosition.new(10, 6),
-					InventoryServer.GridPosition.new(9, 7)
-				)
-
-				task.wait(5)
-			end
-		end)
-
-		-- task.wait(4)
-
-		-- while true do
-		-- 	if InventoryServer.Add(plr, { Item = "Coin", Count = 30 }) then
-		-- 		break
-		-- 	end
-		-- 	task.wait(1)
-		-- end
-
-		-- task.wait(4)
-
-		-- while true do
-		-- 	InventoryServer.Remove(plr, { Item = "Coin", Count = 10 })
-
-		-- 	task.wait(0.5)
-		-- end
+		while isAlive do
+			InventoryServer.Add(plr, { Item = "Coin", Count = 1 })
+			task.wait(2)
+		end
 	end
 
 	-- Waiting for character to load in the first time
 	if not plr.Character then
 		plr.CharacterAdded:Wait()
 	end
-
-	warn("Commencing tests")
 
 	-- Connecting character added
 	task.spawn(charAdded, plr.Character :: Model)
@@ -277,3 +63,147 @@ for i, plr in pairs(Players:GetPlayers()) do
 end
 
 Players.PlayerAdded:Connect(PlayerAdded)
+
+warn(typeof(InventoryServer.GridPosition.new(1, 0)) == typeof(InventoryServer))
+
+-- TESTING SECTION
+if InventoryServer.IsTesting() then
+	InventoryServer.OnPlayerAdded("TEST_PLAYER")
+
+	assert(
+		TableUtil.DeepEqual(InventoryServer.AllInventories.TEST_PLAYER, {
+			Armor = {},
+			Grid = {
+				{
+					[1] = { Count = 10, Item = "Rock" },
+					[2] = { Count = 10, Item = "Rock" },
+					[3] = { Count = 10, Item = "Rock" },
+					[4] = { Count = 10, Item = "Rock" },
+					[5] = { Count = 10, Item = "Rock" },
+					[6] = { Count = 10, Item = "Rock" },
+					[7] = { Count = 1, Item = "Event Item" },
+					[8] = { Count = 1, Item = "Event Item" },
+					[9] = { Count = 1, Item = "Event Item" },
+					[10] = { Count = 1, Item = "Event Item" },
+				},
+				{
+					[1] = { Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 1 } },
+					[2] = { Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 2 } },
+					[3] = { Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 3 } },
+					[4] = { Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 4 } },
+					[5] = { Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 5 } },
+					[6] = { Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 6 } },
+					[7] = { Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 7 } },
+					[8] = { Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 8 } },
+					[9] = { Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 9 } },
+					[10] = { Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 10 } },
+				},
+				{
+					[1] = { Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 11 } },
+					[2] = { Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 12 } },
+					[3] = { Count = 1, Item = "Chestplate" },
+					[4] = { Count = 5, Item = "Health Potion" },
+					[5] = { Count = 5, Item = "Health Potion" },
+					[6] = { Count = 4, Item = "Health Potion" },
+				},
+				{},
+				{},
+				{},
+				{},
+				{},
+				{},
+				{},
+			},
+		}),
+		"TEST FAILED: Initial inventory didn't match"
+	)
+
+	for i = 1, 10 do
+		InventoryServer.UpdateInv("TEST_PLAYER", {
+			Type = "Move",
+			Data = {
+				startPos = InventoryServer.GridPosition.new(1, 1),
+				endPos = InventoryServer.GridPosition.new(1, 4),
+				moveCount = 1,
+			},
+		})
+
+		assert(
+			TableUtil.DeepEqual(InventoryServer.AllInventories.TEST_PLAYER, {
+				Armor = {},
+				Grid = {
+					{
+						[1] = i < 10 and { Count = 10 - i, Item = "Rock" } or nil,
+						[2] = { Count = 10, Item = "Rock" },
+						[3] = { Count = 10, Item = "Rock" },
+						[4] = { Count = 10, Item = "Rock" },
+						[5] = { Count = 10, Item = "Rock" },
+						[6] = { Count = 10, Item = "Rock" },
+						[7] = { Count = 1, Item = "Event Item" },
+						[8] = { Count = 1, Item = "Event Item" },
+						[9] = { Count = 1, Item = "Event Item" },
+						[10] = { Count = 1, Item = "Event Item" },
+					},
+					{
+						[1] = {
+							Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 1 },
+						},
+						[2] = {
+							Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 2 },
+						},
+						[3] = {
+							Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 3 },
+						},
+						[4] = {
+							Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 4 },
+						},
+						[5] = {
+							Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 5 },
+						},
+						[6] = {
+							Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 6 },
+						},
+						[7] = {
+							Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 7 },
+						},
+						[8] = {
+							Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 8 },
+						},
+						[9] = {
+							Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 9 },
+						},
+						[10] = {
+							Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 10 },
+						},
+					},
+					{
+						[1] = {
+							Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 11 },
+						},
+						[2] = {
+							Item = { Id = "Sword", ItemStats = { Durability = 300, Sharpness = 10 }, UniqueId = 12 },
+						},
+						[3] = { Count = 1, Item = "Chestplate" },
+						[4] = { Count = 5, Item = "Health Potion" },
+						[5] = { Count = 5, Item = "Health Potion" },
+						[6] = { Count = 4, Item = "Health Potion" },
+					},
+					{
+						[1] = { Count = i, Item = "Rock" },
+					},
+					{},
+					{},
+					{},
+					{},
+					{},
+					{},
+				},
+			}),
+			string.format("TEST FAILED: Inventory didn't match after move %d", i)
+		)
+	end
+
+	-- TODO: add more tests
+
+	print("TESTS PASSED")
+end

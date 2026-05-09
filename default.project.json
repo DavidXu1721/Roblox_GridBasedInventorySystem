@@ -21,6 +21,10 @@
       "StarterPlayerScripts": {
         "InventoryHandlerClient":{
           "$path": "src/client"
+        },
+
+        "PlayerModule":{
+          "$path": "src/player_module"
         }
       }
     },

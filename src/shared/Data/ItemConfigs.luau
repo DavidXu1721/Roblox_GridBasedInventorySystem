@@ -85,6 +85,6 @@ for id, itemData in pairs(ItemConfigs) do -- this just gives us a way to get the
 	itemData.Id = id
 end
 
-print(ItemConfigs)
+-- print(ItemConfigs)
 
 return ItemConfigs
