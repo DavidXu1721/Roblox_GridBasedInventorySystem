@@ -74,7 +74,7 @@ local ArmorInnerFrame = ArmorFrame:WaitForChild("Inner")
 --[[Functions]]
 --
 
-local function ProcessInventoryData(invData) -- the fact that i even have to do this is absolutely retarded, why is does k turned into a goddamn string?!!
+local function ProcessInventoryData(invData) -- the fact that i even have to do this is absolutely retarded, why does k turn into a goddamn string?!!
 	local newGrid = {}
 
 	for i = 1, #invData.Grid do
@@ -753,7 +753,6 @@ end
 function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPosition, moveCount: number?)
 	local invUtilCoro = coroutine.create(InventoryUtil.MoveSlot)
 
-	-- Calculate the movecount
 	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, startPos, endPos, moveCount)
 
 	if success and result[1] == 1 then
@@ -847,7 +846,6 @@ end
 function InventoryClient.Swap(APos: Types.GridPosition, BPos: Types.GridPosition)
 	local invUtilCoro = coroutine.create(InventoryUtil.SwapSlot)
 
-	-- Calculate the movecount
 	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, APos, BPos)
 
 	if success and result[1] == 1 then
@@ -907,8 +905,7 @@ end
 function InventoryClient.Add(itemsToAdd: Types.StackData?, targetGridPos: Types.GridPosition?)
 	local invUtilCoro = coroutine.create(InventoryUtil.AddItem)
 
-	-- Calculate the movecount
-	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, itemsToAdd)
+	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, itemsToAdd, targetGridPos)
 
 	if success and result[1] == 1 then
 		if result[2] == "InvData not given" then
@@ -924,34 +921,24 @@ function InventoryClient.Add(itemsToAdd: Types.StackData?, targetGridPos: Types.
 		error(result)
 	end
 
-	warn(result[2])
-
-	--[[ OLD CODE
-	if not InventoryClient.InvData then
-		warn(plr.Name .. "'s inventory does not exist")
-		return
-	end
-
-	if not itemsToAdd then
-		return
-	end
+	print(result[2])
 
 	local fullStackDragged = IsDraggingFullSlot()
 
-	local overflowItems = InventoryUtil.RegisterItem(InventoryClient.InvData, itemsToAdd, targetGridPos)
+	success, result = coroutine.resume(invUtilCoro)
 
-	if overflowItems then
-		if TableUtil.DeepEqual(overflowItems, itemsToAdd) then
-			warn("couldn't add any of the items so nothing happened")
-			return overflowItems
+	if success and result[1] == 1 then
+		if result[2] == "No items were added" then
+			warn("None of the items can be added, so nothing actually changed")
+			return result[3]
 		else
-			if typeof(overflowItems.Item) == "table" then
-				error("if there are overflowItems that don't match the itemsToAdd then they can't be a unique item")
-			end
-			-- we are confident that we are dealing with a generic item
-			itemsToAdd.Count -= overflowItems.Count
+			error("ERROR: Invalid result message -- " .. result[2])
 		end
+	elseif not success then
+		error(result)
 	end
+
+	print(result[2])
 
 	if fullStackDragged then
 		local newDraggingSlotInfo = InventoryUtil.GetSlotInfo(InventoryClient.InvData, InventoryClient.DraggingSlot)
@@ -959,23 +946,31 @@ function InventoryClient.Add(itemsToAdd: Types.StackData?, targetGridPos: Types.
 		InventoryClient.DraggingCount = (newDraggingSlotInfo.Count or 1)
 	end
 
-	return overflowItems
-	]]
+	return result[3]
 end
 
 -- Remove item/s from the player's inventory
 function InventoryClient.Remove(itemsToRemove: Types.StackData?, targetGridPos: Types.GridPosition?)
-	if not InventoryClient.InvData then
-		warn(plr.Name .. "'s inventory does not exist")
-		return
+	local invUtilCoro = coroutine.create(InventoryUtil.RemoveItem)
+
+	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, itemsToRemove, targetGridPos)
+
+	if success and result[1] == 1 then
+		if result[2] == "InvData not given" then
+			warn("LocalPlayer's inventory does not exist")
+			return
+		elseif result[2] == "No items to remove" then
+			warn("Items to remove parameter was no present")
+			return
+		else
+			error("ERROR: Invalid result message -- " .. result[2])
+		end
+	elseif not success then
+		error(result)
 	end
 
-	if not itemsToRemove then
-		return
-	end
+	print(result[2])
 
-	-- NOTE: here we actually need to make sure that the inventory that we are removing from actually has the the items. This will ERROR if there are not enough items present
-	local removedItems = InventoryUtil.UnregisterItem(InventoryClient.InvData, itemsToRemove, targetGridPos)
 	-- this is annoying as shit, but I guess this is a special case where we have to check if there are any changes to the draggingSlot AFTER the update to the InvData
 	if InventoryClient.DraggingSlot then
 		local draggingSlotInfo = InventoryUtil.GetSlotInfo(InventoryClient.InvData, InventoryClient.DraggingSlot)
@@ -995,7 +990,7 @@ function InventoryClient.Remove(itemsToRemove: Types.StackData?, targetGridPos: 
 		end
 	end
 
-	return removedItems
+	return result[3]
 end
 
 function InventoryClient.HandleUpdate(
@@ -1047,7 +1042,7 @@ function InventoryClient.HandleUpdate(
 		end
 	end
 
-	-- check if the selectedGridSlot is empty
+	-- check if the selectedGridSlot is empty (in case it became empty from an update)
 	if
 		InventoryClient.SelectedSlot
 		and InventoryUtil.GetSlotInfo(InventoryClient.InvData, InventoryClient.SelectedSlot) == nil
