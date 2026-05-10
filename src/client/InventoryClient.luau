@@ -990,6 +990,16 @@ function InventoryClient.Remove(itemsToRemove: Types.StackData?, targetGridPos: 
 		end
 	end
 
+	success, result = coroutine.resume(invUtilCoro)
+
+	if success and result[1] == 1 then
+		error("ERROR: Invalid result message -- " .. result[2])
+	elseif not success then
+		error(result)
+	end
+
+	print(result[2])
+
 	return result[3]
 end
 
