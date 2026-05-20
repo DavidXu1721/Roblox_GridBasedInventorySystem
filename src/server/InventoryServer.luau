@@ -28,7 +28,7 @@ local Types = require(RSModules.Types)
 --[[Settings]]
 --
 local AUTOSAVE_TIME = 60 * 3
-local IS_TESTING = false
+local IS_TESTING = true
 
 --[[Data]]
 --
@@ -52,6 +52,7 @@ local function getNewItemId()
 		return HttpService:GenerateGUID()
 	end
 end
+local counter = 0
 
 ---------------------------------------------------------------------------------
 --TODO: Rework the code so that registering and unregistering items can take arrays, nah forget it.
@@ -136,16 +137,16 @@ function InventoryServer.OnPlayerRemoving(plr: Player)
 end
 
 -- Move Item Slots within the inventory grid
-function InventoryServer.Move(
-	plr: Player | string,
-	startPos: Types.GridPosition,
-	endPos: Types.GridPosition,
-	moveCount: number?
-)
+function InventoryServer.Move(plr: Player | string, payload: Types.InventoryMoveData): Types.InventoryMoveData?
 	local invUtilCoro = coroutine.create(InventoryUtil.MoveSlot)
 
-	local success, result =
-		coroutine.resume(invUtilCoro, InventoryServer.AllInventories[plr].InvData, startPos, endPos, moveCount)
+	local success, result = coroutine.resume(
+		invUtilCoro,
+		InventoryServer.AllInventories[plr].InvData,
+		payload.startPos,
+		payload.endPos,
+		payload.moveCount
+	)
 
 	while success and result[1] == 0 and coroutine.status(invUtilCoro) ~= "dead" do
 		print(result[2])
@@ -157,7 +158,7 @@ function InventoryServer.Move(
 			warn((plr :: Player).Name or plr :: string .. "'s inventory does not exist")
 			return
 		elseif result[2] == "Slot is empty" then
-			warn("Slot" .. tostring(startPos) .. " is empty")
+			warn("Slot" .. tostring(payload.startPos) .. " is empty")
 			return
 		elseif result[2] == "No items were moved" then
 			warn("None of the items can be moved, so nothing actually changed")
@@ -171,22 +172,15 @@ function InventoryServer.Move(
 
 	print(result[2])
 	-- here result[3] holds the fixed movecount, because I can't really fine any better way to pass that information through
-
-	if typeof(plr) ~= "string" then
-		Signal.FireClient(
-			plr,
-			"InventoryClient:Update",
-			InventoryServer.GetInventoryData(plr),
-			{ Type = "Move", Data = { startPos = startPos, endPos = endPos, moveCount = result[3] } }
-		)
-	end
+	return { startPos = payload.startPos, endPos = payload.endPos, moveCount = result[3] }
 end
 
 -- Swap Item Slots within the inventory grid
-function InventoryServer.Swap(plr: Player | string, APos: Types.GridPosition, BPos: Types.GridPosition)
+function InventoryServer.Swap(plr: Player | string, payload: Types.InventorySwapData): Types.InventorySwapData?
 	local invUtilCoro = coroutine.create(InventoryUtil.SwapSlot)
 
-	local success, result = coroutine.resume(invUtilCoro, InventoryServer.AllInventories[plr].InvData, APos, BPos)
+	local success, result =
+		coroutine.resume(invUtilCoro, InventoryServer.AllInventories[plr].InvData, payload.APos, payload.BPos)
 
 	while success and result[1] == 0 and coroutine.status(invUtilCoro) ~= "dead" do
 		print(result[2])
@@ -209,25 +203,25 @@ function InventoryServer.Swap(plr: Player | string, APos: Types.GridPosition, BP
 
 	print(result[2])
 
-	if typeof(plr) ~= "string" then
-		Signal.FireClient(
-			plr,
-			"InventoryClient:Update",
-			InventoryServer.GetInventoryData(plr),
-			{ Type = "Swap", Data = { APos = APos, BPos = BPos } }
-		)
-	end
+	return { APos = payload.APos, BPos = payload.BPos }
 end
 
 -- Add item/s to the player's inventory
-function InventoryServer.Add(plr: Player | string, itemsToAdd: Types.StackData?, targetGridPos: Types.GridPosition?)
+function InventoryServer.Add(
+	plr: Player | string,
+	payload: Types.InventoryAddData
+): (Types.InventoryAddData?, Types.StackData?)
 	local invUtilCoro = coroutine.create(InventoryUtil.AddItem)
 
-	local success, result =
-		coroutine.resume(invUtilCoro, InventoryServer.AllInventories[plr], itemsToAdd, targetGridPos)
+	local success, result = coroutine.resume(
+		invUtilCoro,
+		InventoryServer.AllInventories[plr].InvData,
+		payload.itemsToAdd,
+		payload.targetGridPos
+	)
 
 	while success and result[1] == 0 and coroutine.status(invUtilCoro) ~= "dead" do
-		print(result[2])
+		-- print(result[2])
 		success, result = coroutine.resume(invUtilCoro)
 	end
 
@@ -245,34 +239,27 @@ function InventoryServer.Add(plr: Player | string, itemsToAdd: Types.StackData?,
 		error(result)
 	end
 
-	print(result[2])
+	-- print(result[2])
 
-	-----------------
-	if typeof(plr) ~= "string" then
-		Signal.FireClient(
-			plr,
-			"InventoryClient:Update",
-			InventoryServer.GetInventoryData(plr),
-			{ Type = "Add", Data = { itemsToAdd = result[4], targetGridPos = targetGridPos } }
-		)
-	end
-
-	return result[3]
+	return { itemsToAdd = result[4], targetGridPos = payload.targetGridPos }, result[3]
 end
 
 -- Remove item/s from the player's inventory
 function InventoryServer.Remove(
 	plr: Player | string,
-	itemsToRemove: Types.StackData?,
-	targetGridPos: Types.GridPosition?
-)
-	local invUtilCoro = coroutine.create(InventoryUtil.AddItem)
+	payload: Types.InventoryRemoveData
+): (Types.InventoryRemoveData?, Types.StackData?)
+	local invUtilCoro = coroutine.create(InventoryUtil.RemoveItem)
 
-	local success, result =
-		coroutine.resume(invUtilCoro, InventoryServer.AllInventories[plr], itemsToRemove, targetGridPos)
+	local success, result = coroutine.resume(
+		invUtilCoro,
+		InventoryServer.AllInventories[plr].InvData,
+		payload.itemsToRemove,
+		payload.targetGridPos
+	)
 
 	while success and result[1] == 0 and coroutine.status(invUtilCoro) ~= "dead" do
-		print(result[2])
+		--print(result[2])
 		success, result = coroutine.resume(invUtilCoro)
 	end
 
@@ -290,26 +277,36 @@ function InventoryServer.Remove(
 		error(result)
 	end
 
-	print(result[2])
+	-- print(result[2])
 
 	---------------------------------
-	if typeof(plr) ~= "string" then
-		Signal.FireClient(
-			plr,
-			"InventoryClient:Update",
-			InventoryServer.GetInventoryData(plr),
-			{ Type = "Remove", Data = { itemsToRemove = itemsToRemove, targetGridPos = targetGridPos } }
-		)
-	end
-	return result[3]
+
+	return payload, result[3]
 end
 
---General Update function
-function InventoryServer.UpdateInv(plr: Player | string, updateInfo: Types.InventoryUpdateInfo)
+-- General Update function
+function InventoryServer.UpdateInv(plr: Player | string, updateInfo: Types.InventoryUpdateInfo?)
 	-- use the update info to do any relevant changes
 	if updateInfo then
-		InventoryServer[updateInfo.Type](updateInfo.Data)
+		-- the Type needs to match the function name exactly (Case Sensitive)
+		local payload: Types.InventoryMoveData | Types.InventorySwapData | Types.InventoryAddData | Types.InventoryRemoveData, output: Types.StackData? =
+			InventoryServer[updateInfo.Type](plr, updateInfo.Data)
+
+		if typeof(plr) ~= "string" then
+			Signal.FireClient(
+				plr,
+				"InventoryClient:Update",
+				InventoryServer.GetInventoryData(plr),
+				{ Type = updateInfo.Type, Data = payload, counter = counter }
+			)
+		end
+
+		return output
 	end
+
+	warn("UpdateInfo is not present, no update occured")
+
+	return
 end
 
 --Getting inventory data
@@ -319,7 +316,7 @@ function InventoryServer.GetInventoryData(plr: Player | string)
 		print("waiting for " .. (plr :: Player).Name or plr :: string .. "'s inventory.")
 		task.wait()
 	end
-	return HttpService:JSONEncode(InventoryServer.AllInventories[plr])
+	return HttpService:JSONEncode(InventoryServer.AllInventories[plr].InvData)
 end
 
 --Handle inventory updates from players
@@ -349,11 +346,15 @@ function InventoryServer.Start()
 	Players.PlayerRemoving:Connect(InventoryServer.OnPlayerRemoving)
 
 	-- Signal Events
-	Signal.ListenRemote("InventoryServer:GetInventoryJSON", InventoryServer.GetInventoryData)
+	Signal.ListenRemote("InventoryServer:GetInventoryJSON", function(plr)
+		Signal.FireClient(plr, "InventoryClient:InvData", InventoryServer.GetInventoryData(plr))
+		print("sent invdata")
+	end)
 	Signal.ListenRemote("InventoryServer:InventoryUpdate", InventoryServer.HandleUpdate)
 
 	-- Game shutdown
 	game:BindToClose(function()
+		print("game closing")
 		for i, plr: Player in pairs(Players:GetPlayers()) do
 			InventoryServer.SaveData(plr)
 		end

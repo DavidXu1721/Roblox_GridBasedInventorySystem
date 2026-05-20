@@ -88,6 +88,8 @@ local function ProcessInventoryData(invData) -- the fact that i even have to do 
 	end
 
 	invData.Grid = newGrid
+
+	return invData
 end
 
 local function GetSlotFrame(slotPos: Types.GridPosition): TextButton?
@@ -169,10 +171,12 @@ local function UpdateSlotUI(gridPos: Types.GridPosition, slotInfo: Types.StackDa
 		if InventoryClient.DraggingSlot == gridPos then -- we are currently dragging this slot, so the image is in the draggingOverlay
 			-- this is a check to make sure that the DraggingCount is never 0
 			if InventoryClient.DraggingCount == 0 then
+				print(InventoryClient.DraggingCount)
 				print(slotName)
 				print(slotInfo)
 				error("ERROR: DraggingCount can't be 0 when DraggingSlot is not nil")
 			elseif InventoryClient.DraggingCount > stackCount then
+				print(InventoryClient.DraggingCount)
 				print(slotName)
 				print(slotInfo)
 				error("ERROR: DraggingCount can't greater than the stack count")
@@ -345,10 +349,13 @@ function InventoryClient.SelectGridSlot(gridPos: Types.GridPosition?)
 							.. tostring(InventoryClient.DraggingSlot)
 					)
 
-					InventoryClient.Remove(
-						{ Item = selectedSlotInfo.Item, Count = InventoryClient.DraggingCount },
-						InventoryClient.DraggingSlot
-					)
+					InventoryClient.UpdateInv({
+						Type = "Remove",
+						Data = {
+							itemsToRemove = { Item = selectedSlotInfo.Item, Count = InventoryClient.DraggingCount },
+							targetGridPos = InventoryClient.DraggingSlot,
+						},
+					})
 
 					if InventoryClient.DraggingSlot then
 						InventoryClient.StopDraggingSlot()
@@ -362,7 +369,14 @@ function InventoryClient.SelectGridSlot(gridPos: Types.GridPosition?)
 							.. " from Slot "
 							.. tostring(InventoryClient.SelectedSlot)
 					)
-					InventoryClient.Remove(selectedSlotInfo, InventoryClient.SelectedSlot)
+
+					InventoryClient.UpdateInv({
+						Type = "Remove",
+						Data = {
+							itemsToRemove = selectedSlotInfo,
+							targetGridPos = InventoryClient.SelectedSlot,
+						},
+					})
 
 					if InventoryClient.DraggingSlot then
 						InventoryClient.StopDraggingSlot()
@@ -505,10 +519,13 @@ function InventoryClient.StartDraggingSlot(targetSlotPos: Types.GridPosition?, d
 				.. " from Slot "
 				.. tostring(InventoryClient.DraggingSlot)
 		)
-		InventoryClient.Remove(
-			{ Item = draggingSlot.Item, Count = InventoryClient.DraggingCount },
-			InventoryClient.DraggingSlot
-		)
+		InventoryClient.UpdateInv({
+			Type = "Remove",
+			Data = {
+				itemsToRemove = { Item = draggingSlot.Item, Count = InventoryClient.DraggingCount },
+				targetGridPos = InventoryClient.DraggingSlot,
+			},
+		})
 
 		if InventoryClient.DraggingSlot then
 			InventoryClient.StopDraggingSlot()
@@ -541,7 +558,6 @@ function InventoryClient.StartDraggingSlot(targetSlotPos: Types.GridPosition?, d
 end
 
 function InventoryClient.StopDraggingSlot(ignoreNilDraggingSlot: boolean?)
-	print("asdsasdadsaasdsdadsa")
 	if InventoryClient.DraggingSlot then
 		local DraggingSlotFrame: TextButton? = GetSlotFrame(InventoryClient.DraggingSlot)
 		local DraggingSlotInfo: Types.StackData? =
@@ -580,11 +596,23 @@ end
 
 -- Updating Inventory data
 function InventoryClient.UpdateInventoryData() -- for now, we do the fully server sided way, baby steps man, baby steps...
-	local retrievedInvData = HttpService:JSONDecode(Signal.InvokeServer("InventoryServer:GetInventoryJSON"))
+	print("Sending Request")
+	Signal.FireServer("InventoryServer:GetInventoryJSON")
+	local disconnect
+	-- in order to make the signals from the server occur in order, we have to do this
+	disconnect = Signal.ListenRemote("InventoryClient:InvData", function(result)
+		print("Request Answered")
+		local retrievedInvData = HttpService:JSONDecode(result)
+		ProcessInventoryData(retrievedInvData)
 
-	ProcessInventoryData(retrievedInvData)
+		InventoryClient.InvData = retrievedInvData
 
-	InventoryClient.InvData = retrievedInvData
+		print(InventoryClient.InvData)
+		InventoryClient.UpdateDisplay()
+		print(InventoryClient.InvData)
+
+		disconnect()
+	end)
 end
 
 -- Updating display
@@ -710,7 +738,10 @@ function InventoryClient.UpdateDisplay()
 						moveCount = math.min(maxStackCount - slotInfo.Count, dragCount)
 					end
 
-					InventoryClient.Move(prevDraggingSlot, currentGridPos, moveCount)
+					InventoryClient.UpdateInv({
+						Type = "Move",
+						Data = { startPos = prevDraggingSlot, endPos = currentGridPos, moveCount = moveCount },
+					})
 
 					-- if we end up moving all the items we were dragging, we might as well just select the slot we moved the items into
 					if moveCount == dragCount then
@@ -733,7 +764,13 @@ function InventoryClient.UpdateDisplay()
 							.. " with Slot "
 							.. tostring(currentGridPos)
 					)
-					InventoryClient.Swap(InventoryClient.DraggingSlot, currentGridPos)
+					InventoryClient.UpdateInv({
+						Type = "Swap",
+						Data = {
+							APos = InventoryClient.DraggingSlot,
+							BPos = currentGridPos,
+						},
+					})
 					InventoryClient.UpdateDisplay()
 
 					InventoryClient.StopDraggingSlot()
@@ -750,17 +787,18 @@ function InventoryClient.UpdateDisplay()
 end
 
 -- Move Item Slots within the inventory grid
-function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPosition, moveCount: number?)
+function InventoryClient.Move(payload: Types.InventoryMoveData): Types.InventoryMoveData?
 	local invUtilCoro = coroutine.create(InventoryUtil.MoveSlot)
 
-	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, startPos, endPos, moveCount)
+	local success, result =
+		coroutine.resume(invUtilCoro, InventoryClient.InvData, payload.startPos, payload.endPos, payload.moveCount)
 
 	if success and result[1] == 1 then
 		if result[2] == "InvData not given" then
 			warn("LocalPlayer's inventory does not exist")
 			return
 		elseif result[2] == "Slot is empty" then
-			warn("Slot" .. tostring(startPos) .. " is empty")
+			warn("Slot" .. tostring(payload.startPos) .. " is empty")
 			return
 		else
 			error("ERROR: Invalid result message -- " .. result[2])
@@ -789,9 +827,9 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 	print(result[2])
 
 	-- update the dragging slot
-	if startPos == InventoryClient.DraggingSlot then
+	if payload.startPos == InventoryClient.DraggingSlot then
 		-- TECHNICALLY speaking this only works because draggingSlot should always be the selected slot, just be cautious i guess?
-		local stackData = InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData?
+		local stackData = InventoryUtil.GetSlotInfo(InventoryClient.InvData, payload.startPos) :: Types.StackData?
 
 		if stackData == nil then
 			-- all the items in the stack have been moved, so we must stop dragging as the slot is (going to be) empty
@@ -801,15 +839,15 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 			InventoryClient.DraggingCount = math.min(InventoryClient.DraggingCount, stackData.Count or 1)
 		end
 		-- if the startPos is instead just the selectedSlot then just update the selected slot
-	elseif startPos == InventoryClient.SelectedSlot then
-		local stackData = InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData?
+	elseif payload.startPos == InventoryClient.SelectedSlot then
+		local stackData = InventoryUtil.GetSlotInfo(InventoryClient.InvData, payload.startPos) :: Types.StackData?
 
 		if stackData == nil then
 			-- all the items in the stack have been moved, so we must deselect as the slot is (going to be) empty
 			InventoryClient.SelectGridSlot()
 		end
-	elseif endPos == InventoryClient.DraggingSlot then
-		local stackData = InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData?
+	elseif payload.endPos == InventoryClient.DraggingSlot then
+		local stackData = InventoryUtil.GetSlotInfo(InventoryClient.InvData, payload.startPos) :: Types.StackData?
 
 		assert(stackData ~= nil, "the end position of a moveslot should not be empty")
 
@@ -839,14 +877,14 @@ function InventoryClient.Move(startPos: Types.GridPosition, endPos: Types.GridPo
 	end
 	]]
 
-	-- TODO: send this move data to the server
+	return { startPos = payload.startPos, endPos = payload.endPos, moveCount = result[3] }
 end
 
 -- Swap Item Slots within the inventory grid
-function InventoryClient.Swap(APos: Types.GridPosition, BPos: Types.GridPosition)
+function InventoryClient.Swap(payload: Types.InventorySwapData): Types.InventorySwapData?
 	local invUtilCoro = coroutine.create(InventoryUtil.SwapSlot)
 
-	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, APos, BPos)
+	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, payload.APos, payload.BPos)
 
 	if success and result[1] == 1 then
 		if result[2] == "InvData not given" then
@@ -865,12 +903,12 @@ function InventoryClient.Swap(APos: Types.GridPosition, BPos: Types.GridPosition
 	local newDragSlot
 	local cachedDragCount = nil
 
-	if APos == InventoryClient.DraggingSlot then
+	if payload.APos == InventoryClient.DraggingSlot then
 		cachedDragCount = InventoryClient.DraggingCount
-		newDragSlot = BPos
-	elseif BPos == InventoryClient.DraggingSlot then
+		newDragSlot = payload.BPos
+	elseif payload.BPos == InventoryClient.DraggingSlot then
 		cachedDragCount = InventoryClient.DraggingCount
-		newDragSlot = APos
+		newDragSlot = payload.APos
 	end
 
 	success, result = coroutine.resume(invUtilCoro)
@@ -886,26 +924,29 @@ function InventoryClient.Swap(APos: Types.GridPosition, BPos: Types.GridPosition
 		error(result)
 	end
 
-	print(result[2])
+	-- print(result[2])
 
 	-- update selected slot
-	if APos == InventoryClient.SelectedSlot then
-		InventoryClient.SelectGridSlot(BPos)
-	elseif BPos == InventoryClient.SelectedSlot then
-		InventoryClient.SelectGridSlot(APos)
+	if payload.APos == InventoryClient.SelectedSlot then
+		InventoryClient.SelectGridSlot(payload.BPos)
+	elseif payload.BPos == InventoryClient.SelectedSlot then
+		InventoryClient.SelectGridSlot(payload.APos)
 	end
 
 	-- start dragging the new slot
 	if newDragSlot then
 		InventoryClient.StartDraggingSlot(newDragSlot, cachedDragCount)
 	end
+
+	return { APos = payload.APos, BPos = payload.BPos }
 end
 
 -- Add item/s to the player's inventory
-function InventoryClient.Add(itemsToAdd: Types.StackData?, targetGridPos: Types.GridPosition?)
+function InventoryClient.Add(payload: Types.InventoryAddData): (Types.InventoryAddData?, Types.StackData?)
 	local invUtilCoro = coroutine.create(InventoryUtil.AddItem)
 
-	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, itemsToAdd, targetGridPos)
+	local success, result =
+		coroutine.resume(invUtilCoro, InventoryClient.InvData, payload.itemsToAdd, payload.targetGridPos)
 
 	if success and result[1] == 1 then
 		if result[2] == "InvData not given" then
@@ -921,7 +962,7 @@ function InventoryClient.Add(itemsToAdd: Types.StackData?, targetGridPos: Types.
 		error(result)
 	end
 
-	print(result[2])
+	-- print(result[2])
 
 	local fullStackDragged = IsDraggingFullSlot()
 
@@ -938,22 +979,24 @@ function InventoryClient.Add(itemsToAdd: Types.StackData?, targetGridPos: Types.
 		error(result)
 	end
 
-	print(result[2])
+	-- print(result[2])
 
 	if fullStackDragged then
+		-- if you were dragging the entire stack, the dragging count updates so you are still dragging the whole stack, otherwise it stays the same
 		local newDraggingSlotInfo = InventoryUtil.GetSlotInfo(InventoryClient.InvData, InventoryClient.DraggingSlot)
 
 		InventoryClient.DraggingCount = (newDraggingSlotInfo.Count or 1)
 	end
 
-	return result[3]
+	return { itemsToAdd = result[4], targetGridPos = payload.targetGridPos }, result[3]
 end
 
 -- Remove item/s from the player's inventory
-function InventoryClient.Remove(itemsToRemove: Types.StackData?, targetGridPos: Types.GridPosition?)
+function InventoryClient.Remove(payload: Types.InventoryRemoveData): (Types.InventoryRemoveData?, Types.StackData?)
 	local invUtilCoro = coroutine.create(InventoryUtil.RemoveItem)
 
-	local success, result = coroutine.resume(invUtilCoro, InventoryClient.InvData, itemsToRemove, targetGridPos)
+	local success, result =
+		coroutine.resume(invUtilCoro, InventoryClient.InvData, payload.itemsToRemove, payload.targetGridPos)
 
 	if success and result[1] == 1 then
 		if result[2] == "InvData not given" then
@@ -969,11 +1012,24 @@ function InventoryClient.Remove(itemsToRemove: Types.StackData?, targetGridPos: 
 		error(result)
 	end
 
-	print(result[2])
+	-- print(result[2])
+
+	-- this is a redundant pause in the the coroutine because of a mistake I did once
+
+	success, result = coroutine.resume(invUtilCoro)
+
+	if success and result[1] == 1 then
+		error("ERROR: Invalid result message -- " .. result[2])
+	elseif not success then
+		error(result)
+	end
+
+	-- print(result[2])
 
 	-- this is annoying as shit, but I guess this is a special case where we have to check if there are any changes to the draggingSlot AFTER the update to the InvData
 	if InventoryClient.DraggingSlot then
 		local draggingSlotInfo = InventoryUtil.GetSlotInfo(InventoryClient.InvData, InventoryClient.DraggingSlot)
+		print(draggingSlotInfo)
 
 		if draggingSlotInfo == nil then -- the slot is completely removed, so stop dragging the slot
 			InventoryClient.StopDraggingSlot(true)
@@ -990,26 +1046,39 @@ function InventoryClient.Remove(itemsToRemove: Types.StackData?, targetGridPos: 
 		end
 	end
 
-	success, result = coroutine.resume(invUtilCoro)
-
-	if success and result[1] == 1 then
-		error("ERROR: Invalid result message -- " .. result[2])
-	elseif not success then
-		error(result)
-	end
-
-	print(result[2])
-
-	return result[3]
+	return payload, result[3]
 end
 
-function InventoryClient.HandleUpdate(
+-- General Update function
+function InventoryClient.UpdateInv(updateInfo: Types.InventoryUpdateInfo?)
+	-- use the update info to do any relevant changes
+	if updateInfo then
+		-- the Type needs to match the function name exactly (Case Sensitive)
+		local payload: Types.InventoryMoveData | Types.InventorySwapData | Types.InventoryAddData | Types.InventoryRemoveData, output: Types.StackData? =
+			InventoryClient[updateInfo.Type](updateInfo.Data)
+
+		if typeof(plr) ~= "string" then
+			-- Signal.FireClient(
+			-- 	plr,
+			-- 	"InventoryClient:Update",
+			-- 	InventoryClient.InvData,
+			-- 	{ Type = updateInfo.Type, Data = payload }
+			-- )
+		end
+
+		return output
+	end
+
+	warn("UpdateInfo is not present, no update occured")
+
+	return
+end
+
+function InventoryClient.HandleServerUpdate(
 	newInvDataJSON: string?,
 	updateInfo: Types.InventoryUpdateInfo --[[to be used later for net code stuff]]
 )
-	local newInvData = HttpService:JSONDecode(newInvDataJSON)
-
-	ProcessInventoryData(newInvData)
+	local newInvData = newInvDataJSON and ProcessInventoryData(HttpService:JSONDecode(newInvDataJSON))
 	--print(InventoryClient.InvData)
 
 	if not InventoryClient.InvData then
@@ -1025,32 +1094,28 @@ function InventoryClient.HandleUpdate(
 			-- you can't send metatables via the network so I will need to remake the GridPositions
 			updateData.APos = InventoryUtil.GridPosition.new(updateData.APos.x, updateData.APos.y)
 			updateData.BPos = InventoryUtil.GridPosition.new(updateData.BPos.x, updateData.BPos.y)
-
-			InventoryClient.Swap(updateData.APos, updateData.BPos)
 		elseif updateInfo.Type == "Move" then
 			-- you can't send metatables via the network so I will need to remake the GridPositions
 			updateData.startPos = InventoryUtil.GridPosition.new(updateData.startPos.x, updateData.startPos.y)
 			updateData.endPos = InventoryUtil.GridPosition.new(updateData.endPos.x, updateData.endPos.y)
-
-			InventoryClient.Move(updateData.startPos, updateData.endPos, updateData.moveCount)
 		elseif updateInfo.Type == "Add" then
 			-- you can't send metatables via the network so I will need to remake the GridPositions
 			if updateData.targetGridPos then
 				updateData.targetGridPos =
 					InventoryUtil.GridPosition.new(updateData.targetGridPos.x, updateData.targetGridPos.y)
 			end
-
-			InventoryClient.Add(updateData.itemsToAdd, updateData.targetGridPos)
 		elseif updateInfo.Type == "Remove" then
 			-- you can't send metatables via the network so I will need to remake the GridPositions
 			if updateData.targetGridPos then
 				updateData.targetGridPos =
 					InventoryUtil.GridPosition.new(updateData.targetGridPos.x, updateData.targetGridPos.y)
 			end
-
-			InventoryClient.Remove(updateData.itemsToRemove, updateData.targetGridPos)
+		else
+			error("Error: Invalid update type")
 		end
 	end
+
+	InventoryClient.UpdateInv(updateInfo)
 
 	-- check if the selectedGridSlot is empty (in case it became empty from an update)
 	if
@@ -1062,7 +1127,7 @@ function InventoryClient.HandleUpdate(
 	end
 
 	-- Check if there is desync in the inventory data
-	if not TableUtil.DeepEqual(InventoryClient.InvData, newInvData) then
+	if newInvData and not TableUtil.DeepEqual(InventoryClient.InvData, newInvData) then
 		warn("DESYNC DETECTED")
 		warn("CLIENT:")
 		warn(InventoryClient.InvData)
@@ -1090,15 +1155,14 @@ function InventoryClient.Start()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 
 	-- Updating inventory
-	task.spawn(function()
+	task.defer(function()
+		print("fetching the invdata")
 		InventoryClient.UpdateInventoryData()
-		print(InventoryClient.InvData)
-		InventoryClient.UpdateDisplay()
-		print(InventoryClient.InvData)
 	end)
 
 	-- Connecting signals
-	Signal.ListenRemote("InventoryClient:Update", InventoryClient.HandleUpdate)
+	Signal.ListenRemote("InventoryClient:Update", InventoryClient.HandleServerUpdate)
+	-- there is a chance this gets called before the InventoryClient.UpdateInventoryData finishes, but InventoryClient.HandleServerUpdate doesn't run if InventoryClient.InvData is nil so it should be fine
 
 	-- Making sure that the canvas size of the GridScrollingFrame matches the absolute size of the Grid (in case the window is resized)
 	GridScrollingFrame.Grid.Changed:Connect(function(property)

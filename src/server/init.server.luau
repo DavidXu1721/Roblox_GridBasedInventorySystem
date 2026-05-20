@@ -38,10 +38,52 @@ local function PlayerAdded(plr: Player)
 			isAlive = false
 			warn("Halting income")
 		end)
+		-- yeah, because removing a player doesn't count as killing the humanoid for some reason
+		InventoryServer.Janitors[plr]:GiveChore(function()
+			isAlive = false
+			warn("Halting income from player leaving")
+		end)
 
 		while isAlive do
-			InventoryServer.Add(plr, { Item = "Coin", Count = 1 })
-			task.wait(2)
+			-- InventoryServer.UpdateInv(plr, {
+			-- 	Type = "Remove",
+			-- 	Data = {
+			-- 		itemsToRemove = { Item = "Rock", Count = 1 },
+			-- 	},
+			-- })
+			-- debug.profilebegin("Update TASK")
+			-- for i = 1, 10000000 do
+			-- 	local sd = math.sqrt(math.sin(i))
+			-- end
+			InventoryServer.UpdateInv(plr, {
+				Type = "Add",
+				Data = {
+					itemsToAdd = { Item = "Coin", Count = 1000 },
+				},
+			})
+			InventoryServer.UpdateInv(plr, {
+				Type = "Remove",
+				Data = {
+					itemsToRemove = { Item = "Coin", Count = 1000 },
+				},
+			})
+			InventoryServer.UpdateInv(plr, {
+				Type = "Add",
+				Data = {
+					itemsToAdd = { Item = "Coin", Count = 2 },
+				},
+			})
+
+			-- InventoryServer.UpdateInv(plr, {
+			-- 	Type = "Add",
+			-- 	Data = {
+			-- 		itemsToAdd = { Item = "Coin", Count = 1 },
+			-- 	},
+			-- })
+			print("just added a coin")
+
+			-- debug.profileend()
+			task.wait()
 		end
 	end
 
@@ -64,14 +106,12 @@ end
 
 Players.PlayerAdded:Connect(PlayerAdded)
 
-warn(typeof(InventoryServer.GridPosition.new(1, 0)) == typeof(InventoryServer))
-
 -- TESTING SECTION
 if InventoryServer.IsTesting() then
 	InventoryServer.OnPlayerAdded("TEST_PLAYER")
 
 	assert(
-		TableUtil.DeepEqual(InventoryServer.AllInventories.TEST_PLAYER, {
+		TableUtil.DeepEqual(InventoryServer.AllInventories.TEST_PLAYER.InvData, {
 			Armor = {},
 			Grid = {
 				{
@@ -129,7 +169,7 @@ if InventoryServer.IsTesting() then
 		})
 
 		assert(
-			TableUtil.DeepEqual(InventoryServer.AllInventories.TEST_PLAYER, {
+			TableUtil.DeepEqual(InventoryServer.AllInventories.TEST_PLAYER.InvData, {
 				Armor = {},
 				Grid = {
 					{
@@ -201,6 +241,7 @@ if InventoryServer.IsTesting() then
 			}),
 			string.format("TEST FAILED: Inventory didn't match after move %d", i)
 		)
+		task.wait()
 	end
 
 	-- TODO: add more tests

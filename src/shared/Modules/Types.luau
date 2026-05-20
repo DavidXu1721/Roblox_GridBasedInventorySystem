@@ -23,35 +23,43 @@ export type Inventory = {
 
 export type GridPosition = typeof(setmetatable({} :: { x: number, y: number }, {} :: any))
 
+export type InventoryMoveData = {
+	startPos: GridPosition,
+	endPos: GridPosition,
+	moveCount: number,
+}
+
+export type InventorySwapData = {
+	APos: GridPosition,
+	BPos: GridPosition,
+}
+
+export type InventoryAddData = {
+	itemsToAdd: StackData?,
+	targetGridPos: GridPosition?,
+}
+
+export type InventoryRemoveData = {
+	itemsToRemove: StackData?,
+	targetGridPos: GridPosition?,
+}
+
 export type InventoryUpdateInfo =
 	{
 		Type: "Move",
-		Data: {
-			startPos: GridPosition,
-			endPos: GridPosition,
-			moveCount: number,
-		},
+		Data: InventoryMoveData,
 	}
 	| {
 		Type: "Swap",
-		Data: {
-			APos: GridPosition,
-			BPos: GridPosition,
-		},
+		Data: InventorySwapData,
 	}
 	| {
 		Type: "Add",
-		Data: {
-			itemsToAdd: StackData,
-			targetGridPos: GridPosition?,
-		},
+		Data: InventoryAddData,
 	}
 	| {
 		Type: "Remove",
-		Data: {
-			itemsToRemove: StackData,
-			targetGridPos: GridPosition?,
-		},
+		Data: InventoryRemoveData,
 	}
 
 export type InventoryVersionHistoryData = {
