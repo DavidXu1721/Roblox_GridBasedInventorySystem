@@ -136,7 +136,7 @@ local function UpdateSlotUI(gridPos: Types.GridPosition, slotInfo: Types.StackDa
 
 	itemSlot = itemSlot :: TextButton
 
-	local slotImage: ImageLabel = itemSlot.Image
+	local slotImage: ImageLabel = itemSlot.Frame.Image
 
 	local hotbarSlot: TextButton = nil
 
@@ -315,9 +315,11 @@ function InventoryClient.SelectGridSlot(gridPos: Types.GridPosition?)
 	for i, otherGridSlot: TextButton in InventoryGrid:GetChildren() do
 		if otherGridSlot.ClassName == "TextButton" and otherGridSlot ~= ItemSample then
 			if otherGridSlot == selectedGridSlot then
-				otherGridSlot.BackgroundColor3 = otherGridSlot:GetAttribute("SelectedColor") :: Color3
+				(otherGridSlot:FindFirstChild("Frame") :: Frame).BackgroundColor3 =
+					otherGridSlot:GetAttribute("SelectedColor") :: Color3
 			else
-				otherGridSlot.BackgroundColor3 = otherGridSlot:GetAttribute("NormalColor") :: Color3
+				(otherGridSlot:FindFirstChild("Frame") :: Frame).BackgroundColor3 =
+					otherGridSlot:GetAttribute("NormalColor") :: Color3
 			end
 		end
 	end
@@ -413,7 +415,7 @@ function InventoryClient.StartDraggingSlot(targetSlotPos: Types.GridPosition?, d
 	end
 
 	local TargetSlotFrame = GetSlotFrame(targetSlotPos) :: TextButton
-	local DraggingImage = TargetSlotFrame:FindFirstChild("Image") :: ImageLabel?
+	local DraggingImage = TargetSlotFrame.Frame:FindFirstChild("Image") :: ImageLabel?
 
 	local SlotInfo = InventoryUtil.GetSlotInfo(InventoryClient.InvData, targetSlotPos) :: Types.StackData?
 
@@ -576,10 +578,13 @@ function InventoryClient.StopDraggingSlot(ignoreNilDraggingSlot: boolean?)
 			if not ignoreNilDraggingSlot then
 				warn("You shouldn't have been dragging an empty slot")
 			end
-			UpdateItemImage(DraggingSlotFrame:FindFirstChild("Image") :: ImageLabel, nil)
+			UpdateItemImage(
+				(DraggingSlotFrame:FindFirstChild("Frame") :: Frame):FindFirstChild("Image") :: ImageLabel,
+				nil
+			)
 		else
 			UpdateItemImage(
-				DraggingSlotFrame:FindFirstChild("Image") :: ImageLabel,
+				(DraggingSlotFrame:FindFirstChild("Frame") :: Frame):FindFirstChild("Image") :: ImageLabel,
 				DraggingSlotInfo.Item,
 				DraggingSlotInfo.Count
 			)
@@ -643,21 +648,12 @@ function InventoryClient.UpdateDisplay()
 	GridScrollingFrame.CanvasSize = UDim2.fromOffset(0, GridScrollingFrame.Grid.AbsoluteSize.Y)
 
 	-- adjust the padding and cell size/spacing of the grid, as of now the cell spacing is set to be 10% of the width of the each grid space,
-	local innerCellPadding = { 1 / (11 * GridDimensions.x - 1), 1 / (11 * GridDimensions.y - 1) }
-	local outerCellPadding =
-		{ innerCellPadding[1] / (innerCellPadding[1] + 1), innerCellPadding[2] / (innerCellPadding[2] + 1) }
-
-	local GridUIPadding = InventoryGrid:WaitForChild("UIPadding")
-
-	GridUIPadding.PaddingTop = UDim.new(outerCellPadding[2] / 2, 0)
-	GridUIPadding.PaddingBottom = UDim.new(outerCellPadding[2] / 2, 0)
-	GridUIPadding.PaddingLeft = UDim.new(outerCellPadding[1] / 2, 0)
-	GridUIPadding.PaddingRight = UDim.new(outerCellPadding[1] / 2, 0)
 
 	local GridUILayout = InventoryGrid:WaitForChild("UIGridLayout")
 
-	GridUILayout.CellSize = UDim2.fromScale(innerCellPadding[1] * 10, innerCellPadding[2] * 10)
-	GridUILayout.CellPadding = UDim2.fromScale(innerCellPadding[1], innerCellPadding[2])
+	GridUILayout.CellSize = UDim2.fromScale(1 / GridDimensions.x, 1 / GridDimensions.y)
+
+	GridUILayout.CellPadding = UDim2.fromScale(0, 0)
 
 	-- Clearing grid slots if they are no longer present, only really a factor if we change the inventory size
 	-- TODO: I honestly doubt that this will turn into a performance issue, but I guess I can make it so that it only runs when I actually changed the grid size
@@ -862,7 +858,7 @@ function InventoryClient.Move(payload: Types.InventoryMoveData): Types.Inventory
 	this is mostly just a debug check, as for this code to be run, the moveSlot must have been performed on the server WHILE the client was draggin the startPos slot, but NOT ALL of the items were removed, so we need to double check if the DraggingCount matches
 
 	if startPos == InventoryClient.DraggingSlot then
-		
+
 		local stackCount = (InventoryUtil.GetSlotInfo(InventoryClient.InvData, startPos) :: Types.StackData).Count or 1
 
 		if InventoryClient.DraggingCount ~= stackCount then
@@ -1029,7 +1025,6 @@ function InventoryClient.Remove(payload: Types.InventoryRemoveData): (Types.Inve
 	-- this is annoying as shit, but I guess this is a special case where we have to check if there are any changes to the draggingSlot AFTER the update to the InvData
 	if InventoryClient.DraggingSlot then
 		local draggingSlotInfo = InventoryUtil.GetSlotInfo(InventoryClient.InvData, InventoryClient.DraggingSlot)
-		print(draggingSlotInfo)
 
 		if draggingSlotInfo == nil then -- the slot is completely removed, so stop dragging the slot
 			InventoryClient.StopDraggingSlot(true)
@@ -1137,11 +1132,6 @@ function InventoryClient.HandleServerUpdate(
 		InventoryClient.SelectGridSlot()
 		InventoryClient.StopDraggingSlot()
 		InventoryClient.InvData = newInvData
-	elseif false then
-		warn("CLIENT:")
-		warn(InventoryClient.InvData)
-		warn("SERVER:")
-		warn(newInvData)
 	end
 
 	--print(InventoryClient.InvData)
@@ -1273,7 +1263,7 @@ function InventoryClient.Start()
 				end
 
 				if DraggingImage then -- The dragging image would have already been set to the dragged item's in the StartDraggingSlot function
-					local itemSampleImage = ItemSample:WaitForChild("Image") :: ImageLabel
+					local itemSampleImage = ItemSample:WaitForChild("Frame"):WaitForChild("Image") :: ImageLabel
 
 					DraggingImage.Size =
 						UDim2.fromOffset(itemSampleImage.AbsoluteSize.X * 1.3, itemSampleImage.AbsoluteSize.Y * 1.3)
